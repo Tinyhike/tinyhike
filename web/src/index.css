@@ -1,0 +1,16 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --green: #2d6a4f;
+  --green-light: #52b788;
+  --sand: #f4f1de;
+  --text: #1a1a1a;
+  --radius: 12px;
+  font-family: system-ui, sans-serif;
+  color: var(--text);
+}
+
+html, body, #root { height: 100%; }
+
+a { color: var(--green); }
+button { cursor: pointer; border-radius: var(--radius); border: none; }

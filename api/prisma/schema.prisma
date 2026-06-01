@@ -1,0 +1,270 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users & Auth ────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  handle    String?  @unique
+  role      Role     @default(MEMBER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  magicTokens  MagicToken[]
+  places       Place[]
+  tracks       Track[]
+  routes       Route[]
+  photos       Photo[]
+  reviews      Review[]
+  lists        List[]
+  listPlaces   ListPlace[]
+  collaborations ListCollaborator[]
+  following    Follow[] @relation("follower")
+  followers    Follow[] @relation("followed")
+}
+
+enum Role {
+  MEMBER
+  STEWARD
+  ADMIN
+}
+
+model MagicToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+// ─── Places ──────────────────────────────────────────────────────────────────
+
+model Place {
+  id    String @id @default(cuid())
+  lat   Float
+  lng   Float
+  // geom Point(4326) managed by PostGIS trigger in postgis_setup.sql
+
+  status PlaceStatus @default(PENDING)
+  source PlaceSource @default(USER)
+  osmId  String?     @unique
+
+  // 11 nullable boolean tags (null = unknown)
+  napFriendly   Boolean?
+  shaded        Boolean?
+  smooth        Boolean?
+  enclosed      Boolean?
+  freeEntry     Boolean?
+  hasToilets    Boolean?
+  hasParking    Boolean?
+  hasCafe       Boolean?
+  hasPlayground Boolean?
+  dogFriendly   Boolean?
+  wheelchairOk  Boolean?
+
+  submittedById String?
+  submittedBy   User?   @relation(fields: [submittedById], references: [id])
+
+  translations PlaceTranslation[]
+  photos       Photo[]
+  reviews      Review[]
+  listPlaces   ListPlace[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum PlaceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PlaceSource {
+  USER
+  OSM
+  CLAUDE
+}
+
+model PlaceTranslation {
+  id          String  @id @default(cuid())
+  placeId     String
+  place       Place   @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  locale      String  // nl | fr | en
+  name        String
+  description String?
+  tips        String?
+
+  @@unique([placeId, locale])
+}
+
+// ─── Routes & Tracks ─────────────────────────────────────────────────────────
+
+model Route {
+  id          String @id @default(cuid())
+  // geom LineString(4326) managed by PostGIS trigger
+  geojson     Json?  // cached FeatureCollection
+  distanceM   Float?
+  durationMin Int?
+
+  napFriendly Boolean?
+  shaded      Boolean?
+  smooth      Boolean?
+  loop        Boolean?
+
+  status PlaceStatus @default(PENDING)
+  source PlaceSource @default(USER)
+
+  authorId String?
+  author   User?   @relation(fields: [authorId], references: [id])
+
+  trackId String? @unique
+  track   Track?  @relation(fields: [trackId], references: [id])
+
+  translations RouteTranslation[]
+  photos       Photo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RouteTranslation {
+  id          String  @id @default(cuid())
+  routeId     String
+  route       Route   @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  locale      String
+  name        String
+  description String?
+  tips        String?
+
+  @@unique([routeId, locale])
+}
+
+model Track {
+  id         String   @id @default(cuid())
+  rawGeojson Json     // raw watchPosition coords array
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  route      Route?
+  createdAt  DateTime @default(now())
+}
+
+// ─── Photos ──────────────────────────────────────────────────────────────────
+
+model Photo {
+  id             String      @id @default(cuid())
+  r2Key          String      @unique
+  r2Url          String
+  status         PhotoStatus @default(PENDING)
+  moderationNote String?
+
+  placeId      String?
+  place        Place?  @relation(fields: [placeId], references: [id])
+  routeId      String?
+  route        Route?  @relation(fields: [routeId], references: [id])
+  uploadedById String?
+  uploadedBy   User?   @relation(fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+enum PhotoStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─── Reviews ─────────────────────────────────────────────────────────────────
+
+model Review {
+  id            String   @id @default(cuid())
+  placeId       String
+  place         Place    @relation(fields: [placeId], references: [id])
+  score         Int      // 1–5
+  tagsConfirmed String[]
+  tagsDisputed  String[]
+  comment       String?
+  anonymous     Boolean  @default(false)
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  createdAt     DateTime @default(now())
+}
+
+// ─── Lists ───────────────────────────────────────────────────────────────────
+
+model List {
+  id         String     @id @default(cuid())
+  slug       String     @unique
+  visibility Visibility @default(PRIVATE)
+  ownerId    String
+  owner      User       @relation(fields: [ownerId], references: [id])
+
+  translations   ListTranslation[]
+  listPlaces     ListPlace[]
+  collaborators  ListCollaborator[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Visibility {
+  PRIVATE
+  UNLISTED
+  PUBLIC
+}
+
+model ListTranslation {
+  id          String  @id @default(cuid())
+  listId      String
+  list        List    @relation(fields: [listId], references: [id], onDelete: Cascade)
+  locale      String
+  name        String
+  description String?
+
+  @@unique([listId, locale])
+}
+
+model ListPlace {
+  id        String   @id @default(cuid())
+  listId    String
+  list      List     @relation(fields: [listId], references: [id], onDelete: Cascade)
+  placeId   String
+  place     Place    @relation(fields: [placeId], references: [id])
+  addedById String?
+  addedBy   User?    @relation(fields: [addedById], references: [id])
+  note      String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([listId, placeId])
+}
+
+model ListCollaborator {
+  listId  String
+  list    List    @relation(fields: [listId], references: [id], onDelete: Cascade)
+  userId  String
+  canEdit Boolean @default(false)
+
+  @@id([listId, userId])
+}
+
+// ─── Social ──────────────────────────────────────────────────────────────────
+
+model Follow {
+  followerId String
+  follower   User     @relation("follower", fields: [followerId], references: [id])
+  followedId String
+  followed   User     @relation("followed", fields: [followedId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@id([followerId, followedId])
+}

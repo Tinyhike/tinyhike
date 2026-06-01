@@ -1,0 +1,102 @@
+networks:
+  tinyhike_net:
+    external: true
+
+volumes:
+  pg_data:
+  letsencrypt:
+
+services:
+  traefik:
+    image: traefik:v3.2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/traefik.yml:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - tinyhike_net
+    env_file: ../.env
+
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tinyhike
+      POSTGRES_USER: tinyhike
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./scripts/postgis_setup.sql:/docker-entrypoint-initdb.d/postgis_setup.sql:ro
+    networks:
+      - tinyhike_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tinyhike"]
+      interval: 10s
+      retries: 5
+
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://tinyhike:${DB_PASSWORD}@db:5432/tinyhike
+      PORT: "3000"
+      JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECRET: ${COOKIE_SECRET}
+      API_URL: https://api.${DOMAIN}
+      WEB_URL: https://app.${DOMAIN}
+      EMAIL_DOMAIN: ${DOMAIN}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      R2_BUCKET: ${R2_BUCKET}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL}
+    networks:
+      - tinyhike_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.${DOMAIN}`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=le"
+      - "traefik.http.services.api.loadbalancer.server.port=3000"
+
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://api.${DOMAIN}
+        VITE_MAPBOX_TOKEN: ${MAPBOX_PUBLIC_TOKEN}
+    restart: unless-stopped
+    networks:
+      - tinyhike_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`app.${DOMAIN}`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls.certresolver=le"
+      - "traefik.http.services.web.loadbalancer.server.port=80"
+
+  marketing:
+    build:
+      context: ../marketing
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - tinyhike_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.marketing.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.marketing.entrypoints=websecure"
+      - "traefik.http.routers.marketing.tls.certresolver=le"
+      - "traefik.http.services.marketing.loadbalancer.server.port=80"
