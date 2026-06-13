@@ -2,7 +2,8 @@
  * Seed places from OpenStreetMap Overpass API for a given city bbox.
  * Fetches parks, playgrounds, cafes suitable for stroller hikes.
  *
- * Usage: BBOX="4.4,51.8,4.6,51.95" npm run seed:osm
+ * Usage: BBOX="51.8,4.4,51.95,4.6" npm run seed:osm
+ * BBOX is Overpass order: south,west,north,east (minLat,minLon,maxLat,maxLon).
  */
 
 import 'dotenv/config'
@@ -23,11 +24,25 @@ const QUERY = (bbox: string) => `
 out center tags;`
 
 async function seed() {
-  const bbox = process.env.BBOX ?? '4.4,51.8,4.6,51.95' // Rotterdam default
+  // Rotterdam default, Overpass order: south,west,north,east (minLat,minLon,maxLat,maxLon)
+  const bbox = process.env.BBOX ?? '51.8,4.4,51.95,4.6'
   const res = await fetch(OVERPASS, {
     method: 'POST',
+    // Overpass (Apache) returns 406 to requests with no User-Agent. Must be set.
+    headers: { 'User-Agent': 'TinyHike/1.0 (hello@tinyhike.com)' },
     body: `data=${encodeURIComponent(QUERY(bbox))}`,
   })
+  // Guard before parsing: Overpass serves HTML error pages (406/429/504) that would
+  // otherwise crash JSON.parse with a misleading "Unexpected token '<'".
+  if (!res.ok) {
+    const preview = (await res.text()).slice(0, 200)
+    throw new Error(`Overpass HTTP ${res.status} ${res.statusText}: ${preview}`)
+  }
+  const contentType = res.headers.get('content-type') ?? ''
+  if (!contentType.includes('application/json')) {
+    const preview = (await res.text()).slice(0, 200)
+    throw new Error(`Overpass returned non-JSON (${contentType}): ${preview}`)
+  }
   const data = (await res.json()) as { elements: Array<{ id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }> }
 
   let created = 0
