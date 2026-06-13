@@ -41,15 +41,17 @@ Security + correctness gaps that are cheap now and expensive later. See **Securi
 
 ## Security (Phase 0 — prioritized)
 
-From a grounded audit of `api/src/`. Severity in brackets.
+From a grounded audit of `api/src/`. Severity in brackets. **Most items DONE 13 June 2026** (commit `3228ada`, verified live).
 
-1. **[CRITICAL] No rate limiting anywhere** — `POST /api/auth/magic` and `GET /api/auth/verify` are open to brute-force and email/Resend abuse. Add `@fastify/rate-limit`; ~5/min per IP on magic send, ~10/min on verify.
-2. **[HIGH] No security headers** — add `@fastify/helmet` (CSP, HSTS, X-Frame-Options, nosniff).
-3. **[HIGH] No global error handler** — `app.setErrorHandler()` to return `{ error, message }` and mask stack traces / Prisma internals in prod.
-4. **[MED] `bbox` query not validated** (`places.ts`) — malformed input → `NaN`, silent broken filter. Validate with Zod (4 numeric parts, sane ranges).
-5. **[MED] Photo MIME allowlist** (`photos.ts`) — only an `image/*` prefix check today; restrict to an explicit allowlist (`image/jpeg|png|webp`), exclude SVG. (Good already: auth required, 10 MB cap, UUID R2 keys → no path traversal.)
-6. **[MED] Review endpoint unauthenticated** (`POST /api/places/:id/reviews`) — anonymous is by design, but add rate limiting / lightweight abuse protection.
-7. **[LOW] Document JWT expiry behavior** — `jose` checks `exp` automatically; make it explicit and add a test.
+1. ~~**[CRITICAL] No rate limiting**~~ — ✅ DONE. `@fastify/rate-limit`: 200/min global, 5/5min on `/auth/magic`, 20/min on `/auth/verify`, 10/min on reviews.
+2. ~~**[HIGH] No security headers**~~ — ✅ DONE. `@fastify/helmet` (CSP, HSTS, X-Frame-Options, nosniff verified in response).
+3. ~~**[HIGH] No global error handler**~~ — ✅ DONE. `app.setErrorHandler()` returns `{ error, message }`, masks 5xx stack traces.
+4. ~~**[MED] `bbox` not validated**~~ — ✅ DONE. Rejects non-numeric / out-of-range / inverted bbox with 400.
+5. ~~**[MED] Photo MIME allowlist**~~ — ✅ DONE. Explicit `jpeg/png/webp` allowlist, SVG excluded.
+6. ~~**[MED] Review endpoint abuse**~~ — ✅ DONE (rate-limited; still intentionally unauthenticated for anonymous reviews).
+7. **[LOW] Document JWT expiry behavior** — ⏳ TODO. `jose` checks `exp` automatically; make it explicit and add a test.
+
+**Still TODO before deploy:** run the full **Security audit** prompt in CLAUDE.md and triage; set prod CORS origin (`WEB_URL`) and secrets; add tests for the auth flow.
 
 **Already good (keep):** crypto-random 32-byte magic tokens, 15-min TTL, single-use enforcement, HttpOnly+Secure+SameSite=lax cookie, admin routes behind `requireAdmin`, no string-interpolated SQL, FK cascades.
 
@@ -116,7 +118,8 @@ Carried from CLAUDE.md, plus new:
 
 ## Immediate next actions (top of stack)
 
-- [ ] Push the 2 local commits (needs GitHub creds in this env — see `MEMORY.md`).
-- [ ] Phase 0 security: `@fastify/rate-limit` + `@fastify/helmet` + global error handler + bbox validation.
-- [ ] Fix MapPage marker/cleanup leaks + add error states (high-visibility UX).
+- [ ] Push the local commits (needs GitHub creds in this env — see `MEMORY.md`). Branch is `ahead 4`.
+- [x] Phase 0 security: helmet + rate-limit + global error handler + bbox validation + photo allowlist (commit `3228ada`).
+- [ ] Fix MapPage marker/cleanup leaks + add error states (high-visibility UX) — *suggested next*.
 - [ ] Decide moderation policy for the 381 PENDING places.
+- [ ] Stand up Vitest + first tests (auth flow, bbox query).
