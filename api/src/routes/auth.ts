@@ -8,7 +8,11 @@ const MAGIC_TTL_MIN = 15
 
 export default async function authRoutes(app: FastifyInstance) {
   // POST /api/auth/magic — send magic link
-  app.post<{ Body: { email: string } }>('/magic', async (req, reply) => {
+  // Strict limit: prevents email enumeration and Resend abuse.
+  app.post<{ Body: { email: string } }>(
+    '/magic',
+    { config: { rateLimit: { max: 5, timeWindow: '5 minutes' } } },
+    async (req, reply) => {
     const { email } = req.body
     if (!email?.includes('@')) return reply.status(400).send({ error: 'Invalid email' })
 
@@ -31,7 +35,10 @@ export default async function authRoutes(app: FastifyInstance) {
   })
 
   // GET /api/auth/verify?token=… — consume magic link, set cookie
-  app.get<{ Querystring: { token: string } }>('/verify', async (req, reply) => {
+  app.get<{ Querystring: { token: string } }>(
+    '/verify',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (req, reply) => {
     const { token } = req.query
     const magic = await app.prisma.magicToken.findUnique({
       where: { token },

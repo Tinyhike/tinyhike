@@ -13,13 +13,21 @@ const PlaceSubmitSchema = z.object({
 
 export default async function placesRoutes(app: FastifyInstance) {
   // GET /api/places?bbox=west,south,east,north&locale=nl
-  app.get<{ Querystring: { bbox?: string; locale?: string } }>('/', async (req) => {
+  app.get<{ Querystring: { bbox?: string; locale?: string } }>('/', async (req, reply) => {
     const { bbox, locale = 'nl' } = req.query
     const where: Record<string, unknown> = { status: 'APPROVED' }
 
-    // bbox filter via raw query for PostGIS — fallback to lat/lng range
+    // bbox filter (lat/lng range). Validate before use so malformed input can't
+    // silently produce NaN bounds and a broken/empty filter.
     if (bbox) {
-      const [west, south, east, north] = bbox.split(',').map(Number)
+      const parts = bbox.split(',').map(Number)
+      if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) {
+        return reply.status(400).send({ error: 'BadRequest', message: 'bbox must be "west,south,east,north" numbers' })
+      }
+      const [west, south, east, north] = parts
+      if (west < -180 || east > 180 || south < -90 || north > 90 || west > east || south > north) {
+        return reply.status(400).send({ error: 'BadRequest', message: 'bbox out of range or inverted' })
+      }
       where.lat = { gte: south, lte: north }
       where.lng = { gte: west, lte: east }
     }
@@ -71,8 +79,12 @@ export default async function placesRoutes(app: FastifyInstance) {
     return reply.status(201).send(place)
   })
 
-  // POST /api/places/:id/reviews
-  app.post<{ Params: { id: string } }>('/:id/reviews', async (req, reply) => {
+  // POST /api/places/:id/reviews — unauthenticated by design (anonymous reviews),
+  // so rate-limit to curb spam/bots.
+  app.post<{ Params: { id: string } }>(
+    '/:id/reviews',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req, reply) => {
     const schema = z.object({
       score: z.number().int().min(1).max(5),
       tagsConfirmed: z.array(z.string()).default([]),

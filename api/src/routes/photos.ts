@@ -13,6 +13,14 @@ const s3 = new S3Client({
   },
 })
 
+// Explicit allowlist of raster image types. Excludes SVG (script payloads) and any
+// other content type. The mapped value is the file extension used for the R2 key.
+const ALLOWED_IMAGE_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+}
+
 export default async function photosRoutes(app: FastifyInstance) {
   // POST /api/photos/presign — get R2 upload URL
   app.post<{ Body: { contentType: string; placeId?: string; routeId?: string } }>(
@@ -20,10 +28,10 @@ export default async function photosRoutes(app: FastifyInstance) {
     { preHandler: requireAuth },
     async (req, reply) => {
       const { contentType, placeId, routeId } = req.body
-      if (!contentType.startsWith('image/')) {
-        return reply.status(400).send({ error: 'Images only' })
+      const ext = ALLOWED_IMAGE_TYPES[contentType]
+      if (!ext) {
+        return reply.status(400).send({ error: 'BadRequest', message: 'Only JPEG, PNG, or WebP images are allowed' })
       }
-      const ext = contentType.split('/')[1]
       const key = `uploads/${crypto.randomUUID()}.${ext}`
 
       const url = await getSignedUrl(
