@@ -17,17 +17,17 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  magicTokens  MagicToken[]
-  places       Place[]
-  tracks       Track[]
-  routes       Route[]
-  photos       Photo[]
-  reviews      Review[]
-  lists        List[]
-  listPlaces   ListPlace[]
+  magicTokens    MagicToken[]
+  places         Place[]
+  tracks         Track[]
+  routes         Route[]
+  photos         Photo[]
+  reviews        Review[]
+  lists          List[]
+  listPlaces     ListPlace[]
   collaborations ListCollaborator[]
-  following    Follow[] @relation("follower")
-  followers    Follow[] @relation("followed")
+  following      Follow[]           @relation("follower")
+  followers      Follow[]           @relation("followed")
 }
 
 enum Role {
@@ -49,9 +49,9 @@ model MagicToken {
 // ─── Places ──────────────────────────────────────────────────────────────────
 
 model Place {
-  id    String @id @default(cuid())
-  lat   Float
-  lng   Float
+  id  String @id @default(cuid())
+  lat Float
+  lng Float
   // geom Point(4326) managed by PostGIS trigger in postgis_setup.sql
 
   status PlaceStatus @default(PENDING)
@@ -99,7 +99,7 @@ model PlaceTranslation {
   id          String  @id @default(cuid())
   placeId     String
   place       Place   @relation(fields: [placeId], references: [id], onDelete: Cascade)
-  locale      String  // nl | fr | en
+  locale      String // nl | fr | en
   name        String
   description String?
   tips        String?
@@ -112,7 +112,7 @@ model PlaceTranslation {
 model Route {
   id          String @id @default(cuid())
   // geom LineString(4326) managed by PostGIS trigger
-  geojson     Json?  // cached FeatureCollection
+  geojson     Json? // cached FeatureCollection
   distanceM   Float?
   durationMin Int?
 
@@ -151,7 +151,7 @@ model RouteTranslation {
 
 model Track {
   id         String   @id @default(cuid())
-  rawGeojson Json     // raw watchPosition coords array
+  rawGeojson Json // raw watchPosition coords array
   userId     String
   user       User     @relation(fields: [userId], references: [id])
   route      Route?
@@ -189,7 +189,7 @@ model Review {
   id            String   @id @default(cuid())
   placeId       String
   place         Place    @relation(fields: [placeId], references: [id])
-  score         Int      // 1–5
+  score         Int // 1–5
   tagsConfirmed String[]
   tagsDisputed  String[]
   comment       String?
@@ -208,9 +208,9 @@ model List {
   ownerId    String
   owner      User       @relation(fields: [ownerId], references: [id])
 
-  translations   ListTranslation[]
-  listPlaces     ListPlace[]
-  collaborators  ListCollaborator[]
+  translations  ListTranslation[]
+  listPlaces    ListPlace[]
+  collaborators ListCollaborator[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -252,6 +252,7 @@ model ListCollaborator {
   listId  String
   list    List    @relation(fields: [listId], references: [id], onDelete: Cascade)
   userId  String
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   canEdit Boolean @default(false)
 
   @@id([listId, userId])

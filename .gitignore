@@ -48,3 +48,11 @@ uploads/
 *.tmp
 *.bak
 .cache/
+
+# Cover .env in any subdirectory (api/, web/, etc.)
+**/.env
+**/.env.local
+**/.env.*.local
+**/.env.production
+**/.env.development
+!**/.env.example
