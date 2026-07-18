@@ -32,8 +32,11 @@ const PayloadSchema = z.object({
   en: TranslationSchema.optional(),
 })
 
-const PENDING_WHERE: Prisma.PlaceWhereInput = {
-  status: 'PENDING',
+// Select any non-rejected place that still lacks a description-bearing translation.
+// Not gated on PENDING: OSM places are now seeded as APPROVED (OSM is trusted), so
+// gating on PENDING would skip them and they'd never get nl/fr/en enrichment.
+const UNENRICHED_WHERE: Prisma.PlaceWhereInput = {
+  status: { not: 'REJECTED' },
   source: { in: ['OSM', 'CLAUDE'] },
   translations: { none: { description: { not: null } } },
 }
@@ -48,7 +51,7 @@ async function enrich() {
   try {
     while (processed < MAX) {
       const places = await prisma.place.findMany({
-        where: { ...PENDING_WHERE, id: { notIn: seen } },
+        where: { ...UNENRICHED_WHERE, id: { notIn: seen } },
         include: { translations: true },
         take: Math.min(PAGE, MAX - processed),
       })
@@ -165,7 +168,7 @@ tip for a parent pushing a stroller. Respond with ONLY a JSON object, no prose:
       }
     }
 
-    const remaining = await prisma.place.count({ where: PENDING_WHERE })
+    const remaining = await prisma.place.count({ where: UNENRICHED_WHERE })
     console.log(`Done. Enriched ${enriched}, failed ${failed}. Remaining: ${remaining}`)
     if (failed > 0) process.exitCode = 1
   } finally {

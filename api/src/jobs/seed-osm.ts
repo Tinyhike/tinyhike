@@ -62,7 +62,7 @@ async function seed() {
         lng,
         osmId,
         source: 'OSM',
-        status: 'PENDING',
+        status: 'APPROVED', // OSM is a trusted source — auto-approve (moderation decision, see ROADMAP)
         translations: { create: { locale: 'nl', name } },
       },
     })
