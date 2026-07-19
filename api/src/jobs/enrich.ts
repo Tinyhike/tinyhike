@@ -32,13 +32,13 @@ const PayloadSchema = z.object({
   en: TranslationSchema.optional(),
 })
 
-// Select any non-rejected place that still lacks a description-bearing translation.
-// Not gated on PENDING: OSM places are now seeded as APPROVED (OSM is trusted), so
-// gating on PENDING would skip them and they'd never get nl/fr/en enrichment.
+// Un-enriched = OSM-origin, not rejected, and Claude hasn't written descriptions yet.
+// enrichedAt is the single canonical "needs enrichment" signal; source is provenance
+// only (never mutated here), so enriched OSM places keep source='OSM'.
 const UNENRICHED_WHERE: Prisma.PlaceWhereInput = {
   status: { not: 'REJECTED' },
-  source: { in: ['OSM', 'CLAUDE'] },
-  translations: { none: { description: { not: null } } },
+  source: 'OSM',
+  enrichedAt: null,
 }
 
 async function enrich() {
@@ -134,8 +134,8 @@ tip for a parent pushing a stroller. Respond with ONLY a JSON object, no prose:
             continue
           }
 
-          // All-or-nothing: the translations and the source flip commit together, so a
-          // failure never leaves a place half-enriched (and thus excluded from re-runs).
+          // All-or-nothing: the translations and the enrichedAt stamp commit together, so
+          // a failure never leaves a place half-enriched (and thus excluded from re-runs).
           await prisma.$transaction(async (tx) => {
             for (const { locale, data } of entries) {
               await tx.placeTranslation.upsert({
@@ -151,7 +151,8 @@ tip for a parent pushing a stroller. Respond with ONLY a JSON object, no prose:
                 update: { description: data.description, tips: data.tips ?? null },
               })
             }
-            await tx.place.update({ where: { id: place.id }, data: { source: 'CLAUDE' } })
+            // Record enrichment as a timestamp; leave provenance (source) untouched.
+            await tx.place.update({ where: { id: place.id }, data: { enrichedAt: new Date() } })
           })
 
           enriched++

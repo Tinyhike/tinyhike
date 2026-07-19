@@ -58,6 +58,11 @@ model Place {
   source PlaceSource @default(USER)
   osmId  String?     @unique
 
+  // Provenance (source) vs enrichment are separate concerns: source records where
+  // the place came from (USER/OSM) and is never mutated by enrichment; enrichedAt is
+  // set when Claude has written nl/fr/en descriptions. null = not yet enriched.
+  enrichedAt DateTime?
+
   // 11 nullable boolean tags (null = unknown)
   napFriendly   Boolean?
   shaded        Boolean?
