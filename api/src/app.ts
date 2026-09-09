@@ -53,10 +53,13 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   })
 
   await app.register(cors, {
-    origin: process.env.WEB_URL ?? 'http://localhost:5173',
+    origin: process.env.PUBLIC_BASE_URL ?? 'http://localhost:5173',
     credentials: true,
   })
-  await app.register(cookie, { secret: process.env.COOKIE_SECRET ?? 'dev-cookie-secret' })
+  // Cookie signing secret. The session cookie holds an independently-signed JWT, so
+  // this only backs @fastify/cookie's optional signed-cookie feature; reuse JWT_SECRET
+  // rather than introduce a separate (undocumented) COOKIE_SECRET env var.
+  await app.register(cookie, { secret: process.env.JWT_SECRET ?? 'dev-cookie-secret' })
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } })
 
   // Global error handler: surface client errors (4xx, incl. validation & rate limit),

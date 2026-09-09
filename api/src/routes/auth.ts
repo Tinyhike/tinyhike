@@ -23,9 +23,9 @@ export default async function authRoutes(app: FastifyInstance) {
     const expiresAt = new Date(Date.now() + MAGIC_TTL_MIN * 60 * 1000)
     await app.prisma.magicToken.create({ data: { token, userId: user.id, expiresAt } })
 
-    const link = `${process.env.API_URL}/api/auth/verify?token=${token}`
+    const link = `${process.env.API_BASE_URL}/api/auth/verify?token=${token}`
     await resend.emails.send({
-      from: `TinyHike <hello@${process.env.EMAIL_DOMAIN}>`,
+      from: `TinyHike <${process.env.RESEND_FROM_EMAIL}>`,
       to: email,
       subject: 'Your TinyHike login link',
       html: `<p><a href="${link}">Click here to sign in</a> — valid ${MAGIC_TTL_MIN} min.</p>`,
@@ -60,7 +60,7 @@ export default async function authRoutes(app: FastifyInstance) {
         path: '/',
         maxAge: 60 * 60 * 24 * 30,
       })
-      .redirect(process.env.WEB_URL + '/?auth=ok')
+      .redirect(process.env.PUBLIC_BASE_URL + '/?auth=ok')
   })
 
   // GET /api/auth/me
