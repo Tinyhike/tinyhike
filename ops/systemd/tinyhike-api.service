@@ -1,0 +1,34 @@
+# TinyHike API — systemd unit (Option A: native + systemd + nginx)
+# Install:  sudo cp ops/systemd/tinyhike-api.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now tinyhike-api
+# Logs:     journalctl -u tinyhike-api -f
+#
+# Env is loaded by the app itself via `import 'dotenv/config'`: WorkingDirectory is
+# api/, and api/.env symlinks to ../.env, so dotenv finds it. (No EnvironmentFile —
+# avoids systemd's stricter parsing choking on special chars in secrets.)
+
+[Unit]
+Description=TinyHike API (Fastify)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=tinyhike
+Group=tinyhike
+WorkingDirectory=/srv/tinyhike/api
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=3
+# Fastify binds from index.ts; PORT comes from .env (3000). nginx proxies to it on
+# localhost, and UFW blocks 3000 from the outside.
+Environment=NODE_ENV=production
+
+# Basic hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,9 +1,30 @@
 # TinyHike — Production Deploy Plan (Step 5)
 
-> **Status: DRAFT for Jerome's review. Nothing here has been executed.**
-> Written 2026-08-07. This is the plan for the first production HTTPS deploy of
-> `app.tinyhike.com` / `api.tinyhike.com`. Read fully before we start; several
-> steps need sudo and a few need product decisions.
+> Written 2026-08-07. First production HTTPS deploy of `app.tinyhike.com` /
+> `api.tinyhike.com`.
+
+## ✅ Decisions locked (2026-09-09)
+- **Architecture:** Option A — native + systemd + nginx.
+- **TLS:** Cloudflare Origin certificate (DNS already 🟠, SSL Full-strict).
+- **Env vars:** reconciled by refactoring the code to the documented names
+  (commit `fc32796`) — blocker #0.1 below is **RESOLVED**.
+
+## Progress
+- [x] #0.1 env-var mismatch fixed (`fc32796`)
+- [x] #0.2 all prod secrets present in `.env` (verified, names only)
+- [x] #0.3 `prisma migrate deploy` → up to date
+- [x] API + web production builds pass; `node dist/index.js` boots (health 200,
+      serves 200 places)
+- [x] Config drafts written: `ops/systemd/tinyhike-api.service`,
+      `ops/nginx/tinyhike.conf`
+- [ ] **NEEDS JEROME:** generate Cloudflare Origin cert → place on box
+- [ ] **NEEDS SUDO:** install nginx, install systemd unit, install cert, cutover
+- [ ] Post-deploy smoke tests (§3) — incl. never-tested magic-link + photo upload
+
+---
+
+> Nothing system-level has been executed yet. Remaining steps need sudo
+> (I'll ask before each) and the Cloudflare cert (Jerome's dashboard action).
 
 Goal: the app currently runs dev-only behind an SSH tunnel. After this, it's
 reachable over HTTPS at the real domains, survives reboots, and auto-renews TLS.
