@@ -63,7 +63,9 @@ model Place {
   // set when Claude has written nl/fr/en descriptions. null = not yet enriched.
   enrichedAt DateTime?
 
-  // 11 nullable boolean tags (null = unknown)
+  // 19 nullable boolean tags (null = unknown — the dominant and expected state;
+  // unknowns are surfaced in the UI as "À confirmer" contribution invitations).
+  // Outdoor-leaning set (original scaffold):
   napFriendly   Boolean?
   shaded        Boolean?
   smooth        Boolean?
@@ -75,6 +77,18 @@ model Place {
   hasPlayground Boolean?
   dogFriendly   Boolean?
   wheelchairOk  Boolean?
+  // Indoor/baby set (added 14 Sep 2026 after the Airbnb-style tag decision —
+  // the dataset is 21% cafes and these are what matter there). changing_table,
+  // highchair and outdoor_seating are backfillable from OSM keys of the same
+  // names; the rest are judgement calls for parents or Claude enrichment.
+  hasChangingTable        Boolean?
+  hasHighchair            Boolean?
+  isBreastfeedingFriendly Boolean?
+  isStrollerWide          Boolean?
+  hasElevator             Boolean?
+  hasOutdoorSeating       Boolean?
+  hasPlayCorner           Boolean?
+  isQuiet                 Boolean?
 
   submittedById String?
   submittedBy   User?   @relation(fields: [submittedById], references: [id])
@@ -194,7 +208,11 @@ model Review {
   id            String   @id @default(cuid())
   placeId       String
   place         Place    @relation(fields: [placeId], references: [id])
-  score         Int // 1–5
+  // 1–5 when the review carries a rating. Optional since 14 Sep 2026: a tag
+  // confirmation ("yes, there is a changing table") is a review with only
+  // tagsConfirmed/tagsDisputed — forcing a star rating on it would either block
+  // the lightest contribution or pollute the score average with filler ratings.
+  score         Int?
   tagsConfirmed String[]
   tagsDisputed  String[]
   comment       String?

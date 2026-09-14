@@ -101,6 +101,18 @@ describe('mapOsmTags', () => {
     expect(mapOsmTags({ amenity: 'cafe' }).hasCafe).toBe(true)
   })
 
+  it('maps the indoor/baby keys, treating "limited"/"room" as present', () => {
+    expect(mapOsmTags({ changing_table: 'yes' }).hasChangingTable).toBe(true)
+    expect(mapOsmTags({ changing_table: 'room' }).hasChangingTable).toBe(true)
+    expect(mapOsmTags({ changing_table: 'no' }).hasChangingTable).toBe(false)
+    expect(mapOsmTags({ highchair: 'yes' }).hasHighchair).toBe(true)
+    expect(mapOsmTags({ highchair: 'no' }).hasHighchair).toBe(false)
+    expect(mapOsmTags({ outdoor_seating: 'yes' }).hasOutdoorSeating).toBe(true)
+    expect(mapOsmTags({ outdoor_seating: 'no' }).hasOutdoorSeating).toBe(false)
+    // And absence stays unknown, as everywhere else.
+    expect(mapOsmTags({ amenity: 'cafe' }).hasChangingTable).toBeUndefined()
+  })
+
   it('never infers the three judgement tags', () => {
     // napFriendly / shaded have no OSM equivalent; enclosed needs a barrier that is
     // almost never mapped on the point itself. These belong to Claude or to reviews.

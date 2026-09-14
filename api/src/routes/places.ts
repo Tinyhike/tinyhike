@@ -112,13 +112,24 @@ export default async function placesRoutes(app: FastifyInstance) {
     '/:id/reviews',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
-    const schema = z.object({
-      score: z.number().int().min(1).max(5),
-      tagsConfirmed: z.array(z.string()).default([]),
-      tagsDisputed: z.array(z.string()).default([]),
-      comment: z.string().max(500).optional(),
-      anonymous: z.boolean().default(false),
-    })
+    const schema = z
+      .object({
+        // Optional: a tag confirmation ("yes, there's a changing table") is a review
+        // with only tagsConfirmed/tagsDisputed. Forcing a star rating on it would
+        // either block the lightest contribution or pollute the score average.
+        score: z.number().int().min(1).max(5).optional(),
+        tagsConfirmed: z.array(z.string()).max(19).default([]),
+        tagsDisputed: z.array(z.string()).max(19).default([]),
+        comment: z.string().max(500).optional(),
+        anonymous: z.boolean().default(false),
+      })
+      .refine((r) => r.score !== undefined || r.comment || r.tagsConfirmed.length > 0 || r.tagsDisputed.length > 0, {
+        message: 'A review must carry a score, a comment, or at least one tag vote',
+      })
+      // The same tag both confirmed and disputed is a contradiction, not a vote.
+      .refine((r) => !r.tagsConfirmed.some((tag) => r.tagsDisputed.includes(tag)), {
+        message: 'A tag cannot be both confirmed and disputed',
+      })
     const parsed = schema.safeParse(req.body)
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() })
 

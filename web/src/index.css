@@ -200,6 +200,145 @@ h1, h2, h3 { letter-spacing: -0.01em; }
   font-size: 14px;
 }
 
+/* ── "What this place offers" (validated mockup: design/mockups/…) ─────────── */
+
+.amen { margin-top: 20px; }
+.amen h2 { font-size: 17px; font-weight: 800; }
+.amen-sub { font-size: 12.5px; color: var(--sky-deep); font-weight: 700; margin-top: 3px; }
+
+.amen-group { margin-top: 14px; }
+.amen-group-title {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+}
+
+.amen-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+@media (max-width: 340px) { .amen-rows { grid-template-columns: 1fr; } }
+
+.amen-unk-wrap { position: relative; }
+
+.amen-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  min-height: 34px;
+  width: 100%;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 10px;
+}
+
+.amen-ico {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+.amen-row--yes .amen-ico { background: var(--mint); }
+
+.amen-row--no { color: var(--ink-soft); }
+.amen-row--no .amen-ico { background: var(--border); filter: grayscale(1); opacity: 0.75; }
+.amen-strike { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+
+.amen-row--unk { color: var(--ink-soft); cursor: pointer; font: inherit; font-weight: 600; }
+.amen-row--unk .amen-ico {
+  background: var(--surface-tint);
+  border: 2px dashed var(--border);
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.amen-row--unk:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+
+.amen-chip {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--sky-deep);
+  background: #e7f5fb;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.amen-row--unk:hover .amen-chip, .amen-row--unk:focus-visible .amen-chip { background: var(--sky); color: #fff; }
+
+.amen-voted { margin-left: auto; color: var(--mint-deep); font-weight: 800; }
+
+/* yes/no popover under an unknown row */
+.amen-vote {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(7, 59, 76, 0.16);
+  padding: 8px 10px;
+}
+.amen-vote-q { font-size: 12px; font-weight: 700; color: var(--ink-soft); width: 100%; }
+.amen-vote-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.amen-vote-btn--yes { background: var(--mint); border-color: var(--mint); color: var(--ink); }
+.amen-vote-btn--no { background: var(--danger-bg); border-color: var(--danger-bg); color: var(--danger-fg); }
+.amen-vote-btn:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+
+.amen-more {
+  margin-top: 16px;
+  display: block;
+  width: 100%;
+  padding: 11px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: var(--surface);
+  font: inherit;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.amen-more:hover { background: var(--surface-tint); }
+
+.amen-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tabbar-h) + var(--safe-b) + 14px);
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 700;
+  padding: 11px 20px;
+  border-radius: 999px;
+  z-index: 30;
+}
+
 .photo-grid {
   margin-top: 16px;
   display: grid;

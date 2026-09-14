@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api.js'
 import { useI18n } from '../lib/i18n.js'
 import { DEFAULT_LOCALE } from '../lib/locale.js'
+import PlaceAmenities from './PlaceAmenities.js'
+import type { PlaceTags } from '../lib/tags.js'
 
 interface Translation {
   locale: string
@@ -12,7 +14,8 @@ interface Translation {
   tips?: string | null
 }
 
-interface PlaceDetail {
+// PlaceTags carries the 19 tri-state tag fields the API returns on the detail.
+interface PlaceDetail extends PlaceTags {
   id: string
   translations: Translation[]
   photos: Array<{ r2Url: string }>
@@ -93,6 +96,8 @@ export default function PlaceSheet() {
               <h1 className="sheet-title">{tr?.name ?? t('sheet.untitled')}</h1>
               {tr?.description && <p className="sheet-text">{tr.description}</p>}
               {tr?.tips && <p className="sheet-tip">{tr.tips}</p>}
+
+              <PlaceAmenities placeId={data.id} place={data} />
 
               {data.photos.length > 0 && (
                 <div className="photo-grid">

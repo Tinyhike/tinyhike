@@ -171,6 +171,9 @@ export interface StrollerTags {
   hasPlayground?: boolean
   dogFriendly?: boolean
   wheelchairOk?: boolean
+  hasChangingTable?: boolean
+  hasHighchair?: boolean
+  hasOutdoorSeating?: boolean
 }
 
 const SMOOTH_SURFACES = new Set(['asphalt', 'paved', 'concrete', 'paving_stones', 'concrete:plates'])
@@ -224,6 +227,13 @@ export function mapOsmTags(tags: Record<string, string> | undefined): StrollerTa
   }
 
   if (tags.barrier && ENCLOSING_BARRIERS.has(tags.barrier)) out.enclosed = true
+
+  // The indoor/baby keys (added with the Airbnb-style tag set). OSM values like
+  // "limited" or "room" both mean the facility exists, so anything explicit that
+  // isn't "no" counts as yes.
+  if (tags.changing_table) out.hasChangingTable = tags.changing_table !== 'no'
+  if (tags.highchair) out.hasHighchair = tags.highchair !== 'no'
+  if (tags.outdoor_seating) out.hasOutdoorSeating = tags.outdoor_seating !== 'no'
 
   return out
 }

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TinyHike — maquette « Ce que propose ce lieu »</title>
+<style>
+  /* Tokens réels de web/src/styles/tokens.css */
+  :root {
+    --berry: #ef476f; --berry-deep: #d81e5b;
+    --sun: #ffd166; --sun-deep: #e08c00;
+    --mint: #06d6a0; --mint-deep: #04936f;
+    --sky: #21a9d8; --sky-deep: #0b6e8f;
+    --grape: #9b5de5; --grape-deep: #7b2cbf;
+    --ink: #073b4c; --ink-soft: #4a6b78;
+    --surface: #fff; --surface-tint: #fff8ee; --border: #e4ebee;
+    --radius: 18px; --radius-lg: 26px;
+    --shadow-sheet: 0 -6px 28px rgba(7,59,76,.18);
+    --shadow-pop: 0 3px 0 rgba(7,59,76,.12);
+    font-family: ui-rounded, 'SF Pro Rounded', 'Segoe UI Variable', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #cfe8dd; color: var(--ink); padding: 24px 12px 60px; }
+  .note { max-width: 860px; margin: 0 auto 20px; background: var(--surface); border-radius: var(--radius); padding: 14px 18px; font-size: 14px; line-height: 1.5; }
+  .note strong { color: var(--berry-deep); }
+  .wrap { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+  .phone { width: 390px; background: #9ac7e8; border-radius: 28px; padding-top: 120px; overflow: hidden; position: relative; box-shadow: 0 8px 30px rgba(7,59,76,.25); }
+  .phone-label { position: absolute; top: 12px; left: 0; right: 0; text-align: center; font-weight: 800; color: var(--ink); font-size: 15px; }
+  .fake-map { position: absolute; top: 40px; left: 0; right: 0; height: 130px;
+    background: repeating-linear-gradient(45deg, #a8d5c2 0 26px, #9ac7e8 26px 60px); opacity: .8; }
+
+  /* ── le slide-up, tel qu'en prod ── */
+  .sheet { position: relative; background: var(--surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; box-shadow: var(--shadow-sheet); padding-bottom: 26px; }
+  .sheet::before { content:''; position:absolute; top:0; left:0; right:0; height:6px;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    background: linear-gradient(90deg, var(--berry) 0 25%, var(--sun) 25% 50%, var(--mint) 50% 75%, var(--sky) 75% 100%); }
+  .grip { width:40px; height:5px; margin:14px auto 0; border-radius:999px; background:var(--border); }
+  .close { position:absolute; top:14px; right:14px; width:36px; height:36px; border-radius:50%;
+    background:var(--berry); color:#fff; border:none; font-size:16px; font-weight:800; box-shadow: var(--shadow-pop); cursor:pointer; }
+  .body { padding: 12px 20px 0; }
+  h1 { font-size: 23px; font-weight: 800; padding-right: 40px; letter-spacing: -.01em; }
+  .desc { margin-top: 8px; line-height: 1.55; font-size: 14.5px; }
+  .tip { margin-top: 12px; padding: 11px 13px; border-radius: var(--radius); background: var(--surface-tint); border: 2px solid var(--sun); font-size: 13.5px; line-height: 1.5; }
+
+  /* ── LA SECTION MAQUETTÉE ── */
+  .amen { margin-top: 20px; }
+  .amen h2 { font-size: 17px; font-weight: 800; margin-bottom: 4px; }
+  .amen-sub { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 12px; }
+  .group { margin-top: 14px; }
+  .group-title { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); margin-bottom: 8px; }
+  .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+  .row { display: flex; align-items: center; gap: 9px; font-size: 13.5px; font-weight: 600; min-height: 34px; }
+  .ico { width: 32px; height: 32px; flex-shrink: 0; display: grid; place-items: center; border-radius: 10px; font-size: 16px; }
+
+  /* état OUI : icône sur pastille couleur */
+  .yes .ico { background: var(--mint); }
+  /* état NON : style Airbnb, barré + délavé */
+  .no { color: var(--ink-soft); }
+  .no .ico { background: var(--border); filter: grayscale(1); opacity: .75; }
+  .no .lbl { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+  /* état INCONNU : grisé + chip cliquable */
+  .unk { color: var(--ink-soft); cursor: pointer; border: none; background: none; font: inherit; text-align: left; padding: 0; }
+  .unk .ico { background: var(--surface-tint); border: 2px dashed var(--border); font-size: 14px; color: var(--ink-soft); }
+  .unk .chip { display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 800; color: var(--sky-deep);
+    background: #e7f5fb; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+  .unk:hover .chip, .unk:focus-visible .chip { background: var(--sky); color: #fff; }
+  .unk:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; border-radius: 10px; }
+
+  .more { margin: 18px 20px 0; display: block; width: calc(100% - 40px); padding: 11px; border-radius: 999px;
+    border: 2px solid var(--ink); background: var(--surface); font: inherit; font-weight: 800; font-size: 14px; color: var(--ink); cursor: pointer; }
+  .more:hover { background: var(--surface-tint); }
+
+  /* mini-toast de démo au clic sur un inconnu */
+  .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(80px); transition: transform .25s;
+    background: var(--ink); color: #fff; font-size: 13.5px; font-weight: 700; padding: 12px 20px; border-radius: 999px; z-index: 10; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <strong>Maquette interactive</strong> — deux fiches selon le type de lieu (les groupes se réordonnent).
+  Trois états : <b>oui</b> (pastille menthe) · <b>non</b> (barré, façon Airbnb) · <b>à confirmer</b> (pointillé + chip cliquable — clique dessus !).
+  Icônes = emoji pour l'instant ; remplaçables par des pictos ligne plus tard sans toucher à la structure.
+</div>
+
+<div class="wrap">
+
+  <!-- ═══════════ CAS 1 : UN CAFÉ ═══════════ -->
+  <div class="phone">
+    <div class="phone-label">☕ Cas 1 — un café (Pour bébé d'abord)</div>
+    <div class="fake-map"></div>
+    <section class="sheet">
+      <div class="grip"></div>
+      <button class="close">✕</button>
+      <div class="body">
+        <h1>Bagels &amp; Beans</h1>
+        <p class="desc">Café lumineux au bord du canal, bagels frais et bon café. Ambiance détendue, personnel habitué aux familles.</p>
+        <p class="tip">💡 La grande table du fond laisse la place pour garer la poussette à côté de vous.</p>
+
+        <div class="amen">
+          <h2>Ce que propose ce lieu</h2>
+          <p class="amen-sub">Vérifié par OSM et les parents · <b style="color:var(--sky-deep)">7 infos à confirmer</b></p>
+
+          <div class="group">
+            <div class="group-title">👶 Pour bébé</div>
+            <div class="rows">
+              <div class="row yes"><span class="ico">🚼</span><span class="lbl">Table à langer</span></div>
+              <div class="row no"><span class="ico">🪑</span><span class="lbl">Chaise haute</span></div>
+              <button class="unk row" onclick="confirmTag('Allaitement bienvenu')"><span class="ico">?</span><span class="lbl">Allaitement<span class="chip">À confirmer</span></span></button>
+              <button class="unk row" onclick="confirmTag('Coin sieste')"><span class="ico">?</span><span class="lbl">Coin sieste<span class="chip">À confirmer</span></span></button>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-title">🍼 Accès poussette</div>
+            <div class="rows">
+              <div class="row yes"><span class="ico">♿</span><span class="lbl">Sans marche</span></div>
+              <button class="unk row" onclick="confirmTag('Passage large')"><span class="ico">?</span><span class="lbl">Passage large<span class="chip">À confirmer</span></span></button>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-title">📍 Sur place</div>
+            <div class="rows">
+              <div class="row yes"><span class="ico">🌤️</span><span class="lbl">Terrasse</span></div>
+              <div class="row yes"><span class="ico">🚻</span><span class="lbl">Toilettes</span></div>
+              <button class="unk row" onclick="confirmTag('Calme')"><span class="ico">?</span><span class="lbl">Calme<span class="chip">À confirmer</span></span></button>
+              <button class="unk row" onclick="confirmTag('Coin jeux')"><span class="ico">?</span><span class="lbl">Coin jeux<span class="chip">À confirmer</span></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="more">Afficher les 19 équipements</button>
+    </section>
+  </div>
+
+  <!-- ═══════════ CAS 2 : UNE AIRE DE JEU ═══════════ -->
+  <div class="phone">
+    <div class="phone-label">🛝 Cas 2 — une aire de jeu (Sur place d'abord)</div>
+    <div class="fake-map"></div>
+    <section class="sheet">
+      <div class="grip"></div>
+      <button class="close">✕</button>
+      <div class="body">
+        <h1>Speeltuin</h1>
+        <p class="desc">Aire de jeux de quartier près du Voorhaven.</p>
+
+        <div class="amen">
+          <h2>Ce que propose ce lieu</h2>
+          <p class="amen-sub">Vérifié par OSM et les parents · <b style="color:var(--sky-deep)">9 infos à confirmer</b></p>
+
+          <div class="group">
+            <div class="group-title">📍 Sur place</div>
+            <div class="rows">
+              <div class="row yes"><span class="ico">🛝</span><span class="lbl">Jeux enfants</span></div>
+              <div class="row yes"><span class="ico">🆓</span><span class="lbl">Gratuit</span></div>
+              <button class="unk row" onclick="confirmTag('Clôturé')"><span class="ico">?</span><span class="lbl">Clôturé<span class="chip">À confirmer</span></span></button>
+              <button class="unk row" onclick="confirmTag('Ombragé')"><span class="ico">?</span><span class="lbl">Ombragé<span class="chip">À confirmer</span></span></button>
+              <button class="unk row" onclick="confirmTag('Toilettes')"><span class="ico">?</span><span class="lbl">Toilettes<span class="chip">À confirmer</span></span></button>
+              <div class="row no"><span class="ico">🐕</span><span class="lbl">Chiens admis</span></div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-title">🍼 Accès poussette</div>
+            <div class="rows">
+              <div class="row yes"><span class="ico">🛞</span><span class="lbl">Sol roulable</span></div>
+              <button class="unk row" onclick="confirmTag('Sans marche')"><span class="ico">?</span><span class="lbl">Sans marche<span class="chip">À confirmer</span></span></button>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-title">👶 Pour bébé</div>
+            <div class="rows">
+              <button class="unk row" onclick="confirmTag('Coin sieste')"><span class="ico">?</span><span class="lbl">Coin sieste<span class="chip">À confirmer</span></span></button>
+              <button class="unk row" onclick="confirmTag('Table à langer')"><span class="ico">?</span><span class="lbl">Table à langer<span class="chip">À confirmer</span></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="more">Afficher les 19 équipements</button>
+    </section>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+  let t;
+  function confirmTag(name) {
+    const el = document.getElementById('toast');
+    el.textContent = '👍 « ' + name + ' » — ici s’ouvrira « Tu y es allé ? Confirme ou infirme »';
+    el.classList.add('show');
+    clearTimeout(t);
+    t = setTimeout(() => el.classList.remove('show'), 2600);
+  }
+</script>
+</body>
+</html>

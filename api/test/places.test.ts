@@ -70,6 +70,31 @@ describe('GET /api/places', () => {
     expect(prisma.place.count).not.toHaveBeenCalled()
   })
 
+  it('accepts a tag-only review (no score) — the lightest contribution', async () => {
+    prisma.place.findUnique.mockResolvedValueOnce({ id: 'p1' })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/places/p1/reviews',
+      payload: { tagsConfirmed: ['hasChangingTable'] },
+    })
+    expect(res.statusCode).toBe(201)
+  })
+
+  it('rejects an empty review carrying neither score, comment nor tag votes', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/places/p1/reviews', payload: {} })
+    expect(res.statusCode).toBe(400)
+    expect(prisma.review.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects a tag both confirmed and disputed', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/places/p1/reviews',
+      payload: { tagsConfirmed: ['shaded'], tagsDisputed: ['shaded'] },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
   it('trims the extra row, flags truncation, and reports the real total', async () => {
     // 3 rows for a limit of 2 — the third only exists to prove there are more.
     prisma.place.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }, { id: 'c' }])
