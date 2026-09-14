@@ -29,12 +29,27 @@ export default async function authRoutes(app: FastifyInstance) {
     // after the redirect below. Pointing at api.tinyhike.com would set the cookie on a
     // host the app never calls, and login would silently fail.
     const link = `${process.env.PUBLIC_BASE_URL}/api/auth/verify?token=${token}`
-    await resend.emails.send({
+    // The Resend SDK does NOT reject on API errors — it resolves with
+    // { data: null, error: {...} }. Awaiting it without inspecting the result
+    // reports success for every failed send: unverified domain, bad key, rejected
+    // recipient. That's how this endpoint answered 200 "check your inbox" while
+    // delivering nothing and logging nothing.
+    const { error } = await resend.emails.send({
       from: `TinyHike <${process.env.RESEND_FROM_EMAIL}>`,
       to: email,
       subject: 'Your TinyHike login link',
       html: `<p><a href="${link}">Click here to sign in</a> — valid ${MAGIC_TTL_MIN} min.</p>`,
     })
+
+    if (error) {
+      // The from-address is config, not a secret, and it's the usual culprit
+      // (sending domain not verified), so log it alongside the provider's reason.
+      req.log.error({ err: error, from: process.env.RESEND_FROM_EMAIL }, 'magic link email failed')
+      return reply.status(502).send({
+        error: 'EmailFailed',
+        message: 'We could not send the sign-in email. Please try again shortly.',
+      })
+    }
 
     return { ok: true }
   })
