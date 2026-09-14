@@ -32,14 +32,15 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
 - **API Fastify 5** — all routes loaded (auth, places, routes, photos, lists, admin), helmet, per-IP rate limiting, `trustProxy`, global error handler. Dev: `cd api && pnpm dev` on :3000
 - **Web Vite 5 + React 18 + Mapbox GL 3** — clustered Rotterdam map. Dev: `cd web && pnpm dev` on :5173, proxies `/api/*` to :3000
 - **381 POIs seeded from OSM** and enriched by Claude into nl/fr/en (1143 translations). `/api/places?bbox=...` serves them over HTTPS
-- **Vitest** — 6 tests green via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens)
+- **Vitest** — 17 tests green via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens)
+- **Magic-link auth works end to end in production** (verified 14 Sep 2026): email delivered by Resend, `/api/auth/verify` hit on the web origin, 302, session cookie usable by the app
+- **Web app has a real shell** — tab bar (Carte/Listes/Profil), place detail as a sheet over a still-mounted map, loading/error states everywhere, interface in nl/fr/en with a switcher, bright toy-box identity (see `DESIGN.md`), generated PWA icons
 - **Git repo**: `https://github.com/Tinyhike/tinyhike` (public, MIT, branch `main`), cloned at `/srv/tinyhike/`
 - **External services configured**: Resend (email), Mapbox (tiles, token restricted to `tinyhike.com` / `app.tinyhike.com` / `localhost:5173`), Cloudflare R2 (bucket `tinyhike-photos`, custom domain `photos.tinyhike.com`), Cloudflare Email Routing (`hello@`, `security@`, `conduct@` → Gmail)
 - **DNS + SSL**: `tinyhike.com` (+ `app`, `api`, `photos`, `www`) and `tinyhike.app` (redirect 301) live on Cloudflare, proxied 🟠, SSL Full strict
 
 ### ⏳ What's not done yet
-- **No real users tested** — the magic-link flow has still never been exercised end-to-end on a real inbox. Highest-risk untested path.
-- **No photo upload tested** — R2 client wired, upload flow never exercised
+- **No photo upload UI** — the backend is rebuilt and tested (presign → upload → confirm, with R2 existence verified before any row is written), but nothing in `web/` calls it yet
 - **Pending kernel reboot** — running `7.0.0-15-generic`, installed is `7.0.0-31-generic`. systemd brings everything back up, so a reboot is safe.
 - **No design pass** — visual identity, "stroller score", place-card icons, a11y all still untouched
 - **`marketing/` not deployed** — apex and `www` have no origin server block yet
@@ -161,7 +162,9 @@ DATABASE_URL          # postgresql://tinyhike:<password>@localhost:5432/tinyhike
 JWT_SECRET            # 32 bytes base64, generated via openssl rand -base64 32
 ANTHROPIC_API_KEY     # sk-ant-... dedicated TinyHike key (separate from OpenClaw)
 RESEND_API_KEY        # re_...
-RESEND_FROM_EMAIL     # hello@send.tinyhike.com
+RESEND_FROM_EMAIL     # hello@tinyhike.com — must be on the domain VERIFIED in Resend.
+                      # `tinyhike.com` is the verified one; `send.tinyhike.com` is NOT
+                      # a Resend domain, it only holds the bounce-return MX/SPF records.
 MAPBOX_PUBLIC_TOKEN   # pk.eyJ1... (also in web/.env as VITE_MAPBOX_TOKEN)
 R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID
@@ -300,7 +303,11 @@ These are real bugs we hit. Reading this list saves 30 min each time.
 
 14. **The magic link must point at `PUBLIC_BASE_URL`** — `/api/auth/verify` sets a host-only cookie. Sending the link to `api.tinyhike.com` sets it on a host the web app never calls, then redirects to `app.tinyhike.com` where the browser won't send it: login fails silently. nginx proxies `/api/*` on the web origin, so keep the whole flow same-origin.
 
-15. **Cloudflare Origin cert gotchas** — generate it in the **`tinyhike.com`** zone (not `tinyhike.app`, which is only a 301 redirect), list **both** `tinyhike.com` and `*.tinyhike.com` (the wildcard doesn't cover the apex), and use the "Click to copy" button: a mouse selection silently drops the `-----BEGIN/END-----` lines and OpenSSL then refuses the file. The private key is shown once — Bitwarden it immediately.
+15. **The Resend SDK does NOT throw on API errors** — `resend.emails.send()` resolves with `{ data: null, error: {...} }`. `await` it without inspecting the result and every failed send looks like a success: the endpoint answers 200, the user is told to check their inbox, and nothing is logged. Always destructure `{ error }` and act on it. The same shape applies to the other Resend methods.
+
+16. **Resend's DNS layout is counter-intuitive** — for the verified domain `tinyhike.com`, the MX and SPF records live on **`send.tinyhike.com`** (that's the bounce return-path subdomain), while DKIM sits at **`resend._domainkey.tinyhike.com`** on the root. Looking for DKIM under `send.` finds nothing and leads to the wrong conclusion. And `send.tinyhike.com` is *not* a sending domain: `RESEND_FROM_EMAIL` must be on `tinyhike.com` or Resend refuses the send.
+
+17. **Cloudflare Origin cert gotchas** — generate it in the **`tinyhike.com`** zone (not `tinyhike.app`, which is only a 301 redirect), list **both** `tinyhike.com` and `*.tinyhike.com` (the wildcard doesn't cover the apex), and use the "Click to copy" button: a mouse selection silently drops the `-----BEGIN/END-----` lines and OpenSSL then refuses the file. The private key is shown once — Bitwarden it immediately.
 
 ---
 

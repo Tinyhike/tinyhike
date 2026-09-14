@@ -23,7 +23,11 @@
 - [x] **LIVE:** `https://app.tinyhike.com` + `https://api.tinyhike.com` → 200
 - [x] Magic-link cookie bug fixed before it shipped (`d3b5a1c`)
 - [x] Real visitor IP + per-IP rate limiting behind Cloudflare (`8b6b2d2`)
-- [ ] Smoke tests still owed (§3): **magic-link end-to-end**, **photo upload**
+- [x] **Magic-link end-to-end verified in production** (14 Sep 2026) — needed two
+      fixes first: the cookie host (`d3b5a1c`) and Resend errors being swallowed
+      (`98bf333`), plus `RESEND_FROM_EMAIL` moved off the unverified
+      `send.tinyhike.com` onto `tinyhike.com`
+- [ ] Photo upload smoke test — backend rebuilt and tested, but no UI calls it yet
 - [ ] Reboot to pick up the pending kernel (`7.0.0-15` → `7.0.0-31`)
 
 **Deployed 2026-09-14.** The app no longer needs the SSH tunnel.
