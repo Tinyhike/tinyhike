@@ -3,7 +3,7 @@ import mapboxgl from 'mapbox-gl'
 import { useQuery } from '@tanstack/react-query'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api.js'
-import { getLocale } from '../lib/locale.js'
+import { useI18n } from '../lib/i18n.js'
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
 
@@ -34,7 +34,7 @@ export default function MapPage() {
   const placesRef = useRef<Place[]>([])
   const [styleReady, setStyleReady] = useState(false)
   const [bbox, setBbox] = useState('4.4,51.8,4.6,51.95') // Rotterdam default
-  const locale = getLocale()
+  const { t, locale } = useI18n()
 
   // Same reason as placesRef: the map's click handlers are registered once, inside
   // `load`, and would otherwise capture the first render's navigate.
@@ -81,11 +81,12 @@ export default function MapPage() {
         type: 'circle',
         source: SOURCE_ID,
         filter: ['has', 'point_count'],
+        // Colours mirror the design tokens in index.css (--grape / --berry).
         paint: {
-          'circle-color': '#2d6a4f',
-          'circle-opacity': 0.85,
-          'circle-radius': ['step', ['get', 'point_count'], 16, 25, 22, 100, 30],
-          'circle-stroke-width': 2,
+          'circle-color': '#9b5de5',
+          'circle-opacity': 0.92,
+          'circle-radius': ['step', ['get', 'point_count'], 17, 25, 23, 100, 31],
+          'circle-stroke-width': 3,
           'circle-stroke-color': '#ffffff',
         },
       })
@@ -97,7 +98,7 @@ export default function MapPage() {
         layout: {
           'text-field': ['get', 'point_count_abbreviated'],
           'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
-          'text-size': 13,
+          'text-size': 14,
         },
         paint: { 'text-color': '#ffffff' },
       })
@@ -108,9 +109,9 @@ export default function MapPage() {
         source: SOURCE_ID,
         filter: ['!', ['has', 'point_count']],
         paint: {
-          'circle-color': '#40916c',
-          'circle-radius': 7,
-          'circle-stroke-width': 2,
+          'circle-color': '#ef476f',
+          'circle-radius': 8,
+          'circle-stroke-width': 3,
           'circle-stroke-color': '#ffffff',
         },
       })
@@ -168,11 +169,11 @@ export default function MapPage() {
     <div className="map-page">
       <div ref={mapRef} className="map-canvas" />
 
-      {(isLoading || isFetching) && <div className="map-pill">Chargement des lieux…</div>}
+      {(isLoading || isFetching) && <div className="map-pill">{t('map.loading')}</div>}
 
       {isError && (
         <div className="map-error" role="alert">
-          Impossible de charger les lieux.
+          {t('map.error')}
           {error instanceof Error ? ` ${error.message}` : ''}
         </div>
       )}

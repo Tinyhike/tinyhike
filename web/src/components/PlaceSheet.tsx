@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api.js'
-import { getLocale, DEFAULT_LOCALE } from '../lib/locale.js'
+import { useI18n } from '../lib/i18n.js'
+import { DEFAULT_LOCALE } from '../lib/locale.js'
 
 interface Translation {
   locale: string
@@ -25,7 +26,7 @@ interface PlaceDetail {
 export default function PlaceSheet() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const locale = getLocale()
+  const { t, locale } = useI18n()
   const closeRef = useRef<HTMLButtonElement>(null)
 
   const { data, isLoading, isError, error } = useQuery<PlaceDetail>({
@@ -49,7 +50,7 @@ export default function PlaceSheet() {
 
   // The API returns every locale; pick the visitor's, then the launch-city default,
   // then whatever exists — a place with no translation at all should still show.
-  const t =
+  const tr =
     data?.translations.find((x) => x.locale === locale) ??
     data?.translations.find((x) => x.locale === DEFAULT_LOCALE) ??
     data?.translations[0]
@@ -59,17 +60,17 @@ export default function PlaceSheet() {
   return (
     <>
       <div className="sheet-scrim" onClick={close} aria-hidden="true" />
-      <section className="sheet" role="dialog" aria-modal="true" aria-label={t?.name ?? 'Détail du lieu'}>
+      <section className="sheet" role="dialog" aria-modal="true" aria-label={tr?.name ?? t('sheet.loading')}>
         <div className="sheet-grip" aria-hidden="true" />
-        <button ref={closeRef} className="sheet-close" onClick={close} aria-label="Fermer">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+        <button ref={closeRef} className="sheet-close" onClick={close} aria-label={t('sheet.close')}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         </button>
 
         <div className="sheet-body">
           {isLoading && (
-            <div className="skeleton-group" aria-busy="true" aria-label="Chargement du lieu">
+            <div className="skeleton-group" aria-busy="true" aria-label={t('sheet.loading')}>
               <div className="skeleton skeleton--title" />
               <div className="skeleton skeleton--line" />
               <div className="skeleton skeleton--line" />
@@ -79,19 +80,19 @@ export default function PlaceSheet() {
 
           {isError && (
             <div className="state state--error" role="alert">
-              <p>{notFound ? 'Ce lieu n’existe pas ou n’est plus publié.' : 'Impossible de charger ce lieu.'}</p>
+              <p>{notFound ? t('sheet.notFound') : t('sheet.error')}</p>
               {!notFound && error instanceof Error && <p className="state-detail">{error.message}</p>}
               <button className="btn" onClick={close}>
-                Retour à la carte
+                {t('sheet.backToMap')}
               </button>
             </div>
           )}
 
           {data && (
             <>
-              <h1 className="sheet-title">{t?.name ?? 'Lieu sans nom'}</h1>
-              {t?.description && <p className="sheet-text">{t.description}</p>}
-              {t?.tips && <p className="sheet-tip">{t.tips}</p>}
+              <h1 className="sheet-title">{tr?.name ?? t('sheet.untitled')}</h1>
+              {tr?.description && <p className="sheet-text">{tr.description}</p>}
+              {tr?.tips && <p className="sheet-tip">{tr.tips}</p>}
 
               {data.photos.length > 0 && (
                 <div className="photo-grid">

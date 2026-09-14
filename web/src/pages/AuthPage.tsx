@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError } from '../lib/api.js'
+import { useI18n } from '../lib/i18n.js'
 
 type Status = 'idle' | 'sending' | 'sent' | 'error'
 
 export default function AuthPage() {
+  const { t } = useI18n()
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<Status>('idle')
   const [message, setMessage] = useState('')
@@ -21,10 +23,10 @@ export default function AuthPage() {
       setStatus('error')
       setMessage(
         err instanceof ApiError && err.status === 429
-          ? 'Trop de tentatives. Réessaie dans quelques minutes.'
+          ? t('auth.tooMany')
           : err instanceof Error
             ? err.message
-            : 'Envoi impossible.',
+            : t('auth.failed'),
       )
     }
   }
@@ -32,15 +34,13 @@ export default function AuthPage() {
   if (status === 'sent') {
     return (
       <div className="page">
-        <h1>Regarde ta boîte mail</h1>
+        <h1>{t('auth.checkInbox')}</h1>
         <p className="sheet-text">
-          Un lien de connexion a été envoyé à <strong>{email}</strong>. Il est valable 15 minutes.
+          {t('auth.sentTo')} <strong>{email}</strong>. {t('auth.validFor')}
         </p>
-        <p className="state-detail" style={{ marginTop: 12 }}>
-          Rien reçu ? Pense à vérifier les spams.
-        </p>
+        <p className="state-detail">{t('auth.spam')}</p>
         <Link to="/" className="btn" style={{ display: 'inline-block', textDecoration: 'none', color: '#fff' }}>
-          Retour à la carte
+          {t('auth.back')}
         </Link>
       </div>
     )
@@ -48,20 +48,20 @@ export default function AuthPage() {
 
   return (
     <div className="page">
-      <h1>Se connecter à TinyHike</h1>
-      <p className="state-detail">Pas de mot de passe : on t’envoie un lien par e-mail.</p>
+      <h1>{t('auth.title')}</h1>
+      <p className="state-detail">{t('auth.subtitle')}</p>
 
-      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 18 }}>
         <input
+          className="field"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="toi@exemple.com"
+          placeholder="you@example.com"
           autoComplete="email"
           required
-          aria-label="Adresse e-mail"
+          aria-label={t('auth.email')}
           aria-invalid={status === 'error'}
-          style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border)', fontSize: 16 }}
         />
 
         {status === 'error' && (
@@ -71,12 +71,12 @@ export default function AuthPage() {
         )}
 
         <button type="submit" className="btn" style={{ marginTop: 0 }} disabled={status === 'sending'}>
-          {status === 'sending' ? 'Envoi…' : 'Recevoir le lien'}
+          {status === 'sending' ? t('auth.sending') : t('auth.send')}
         </button>
       </form>
 
-      <p style={{ marginTop: 16 }}>
-        <Link to="/">Retour à la carte</Link>
+      <p style={{ marginTop: 18 }}>
+        <Link to="/">{t('auth.back')}</Link>
       </p>
     </div>
   )

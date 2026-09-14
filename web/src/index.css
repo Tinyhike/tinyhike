@@ -1,34 +1,54 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Design tokens ──────────────────────────────────────────────────────────
+   Bright toy-box palette: primary colours, not pastels. Each hue has a `-deep`
+   variant that carries white text at an accessible contrast ratio — the bright
+   value is for fills and accents, the deep one for anything with text on it. */
 :root {
-  --green: #2d6a4f;
-  --green-light: #52b788;
-  --green-dark: #1b4332;
-  --sand: #f4f1de;
-  --text: #1a1a1a;
-  --text-muted: #5c6660;
+  --berry: #ef476f;
+  --berry-deep: #d81e5b;
+  --sun: #ffd166;
+  --sun-deep: #e08c00;
+  --mint: #06d6a0;
+  --mint-deep: #04936f;
+  --sky: #21a9d8;
+  --sky-deep: #0b6e8f;
+  --grape: #9b5de5;
+  --grape-deep: #7b2cbf;
+
+  --ink: #073b4c;          /* deep teal-navy: reads as "dark" without being black */
+  --ink-soft: #4a6b78;
   --surface: #ffffff;
-  --border: #e6e9e7;
-  --danger-bg: #fde8e8;
-  --danger-fg: #9b1c1c;
-  --radius: 12px;
-  --shadow-sheet: 0 -4px 24px rgba(0, 0, 0, 0.18);
+  --surface-tint: #fff8ee; /* warm, not cream-boring: a hint of the sun yellow */
+  --border: #e4ebee;
+
+  --danger-bg: #ffe3ea;
+  --danger-fg: #b0123f;
+
+  --radius: 18px;
+  --radius-lg: 26px;
+  --shadow-sheet: 0 -6px 28px rgba(7, 59, 76, 0.18);
+  --shadow-pop: 0 3px 0 rgba(7, 59, 76, 0.12);
 
   /* Tab bar height + the iOS home-indicator inset, so the map and the sheet can
      both stop exactly above it instead of hiding content behind it. */
-  --tabbar-h: 56px;
+  --tabbar-h: 60px;
   --safe-b: env(safe-area-inset-bottom, 0px);
 
-  font-family: system-ui, sans-serif;
-  color: var(--text);
+  /* ui-rounded is the system rounded face on Apple platforms; elsewhere we fall
+     back to the regular UI font rather than pull in a webfont. */
+  font-family: ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', 'Segoe UI Variable', system-ui, sans-serif;
+  color: var(--ink);
   -webkit-text-size-adjust: 100%;
 }
 
 html, body, #root { height: 100%; }
-body { overscroll-behavior: none; }
+body { overscroll-behavior: none; background: var(--surface); }
 
-a { color: var(--green); }
-button { cursor: pointer; border-radius: var(--radius); border: none; font: inherit; }
+a { color: var(--sky-deep); }
+button { cursor: pointer; border-radius: var(--radius); border: none; font: inherit; color: inherit; }
+
+h1, h2, h3 { letter-spacing: -0.01em; }
 
 /* ── App shell ─────────────────────────────────────────────────────────────── */
 
@@ -51,7 +71,7 @@ button { cursor: pointer; border-radius: var(--radius); border: none; font: inhe
   display: flex;
   height: calc(var(--tabbar-h) + var(--safe-b));
   padding-bottom: var(--safe-b);
-  border-top: 1px solid var(--border);
+  border-top: 2px solid var(--border);
   background: var(--surface);
   flex-shrink: 0;
 }
@@ -62,16 +82,30 @@ button { cursor: pointer; border-radius: var(--radius); border: none; font: inhe
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   text-decoration: none;
-  color: var(--text-muted);
+  color: var(--ink-soft);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 700;
 }
 
-.tab svg { width: 22px; height: 22px; }
-.tab--active { color: var(--green); }
-.tab:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.tab svg {
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border-radius: 999px;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+/* Each tab lights up in its own colour — the toy-box feel comes from using the
+   whole palette rather than tinting one brand colour. */
+.tab--active { color: var(--ink); }
+.tab--active svg { color: #fff; }
+.tab:nth-child(1).tab--active svg { background: var(--berry); }
+.tab:nth-child(2).tab--active svg { background: var(--grape); }
+.tab:nth-child(3).tab--active svg { background: var(--sky); }
+
+.tab:focus-visible { outline: 3px solid var(--sky); outline-offset: -3px; border-radius: var(--radius); }
 
 /* ── Map ───────────────────────────────────────────────────────────────────── */
 
@@ -83,25 +117,25 @@ button { cursor: pointer; border-radius: var(--radius); border: none; font: inhe
   top: 12px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 6px 14px;
+  padding: 8px 18px;
   border-radius: 999px;
   font-size: 13px;
-  font-weight: 500;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  font-weight: 700;
   z-index: 2;
 }
 
 .map-pill {
-  background: rgba(255, 255, 255, 0.95);
-  color: var(--green-dark);
+  background: var(--sun);
+  color: var(--ink);
+  box-shadow: var(--shadow-pop);
   pointer-events: none;
 }
 
 .map-error {
   max-width: 90%;
-  border-radius: 8px;
   background: var(--danger-bg);
   color: var(--danger-fg);
+  box-shadow: var(--shadow-pop);
 }
 
 /* ── Place sheet ───────────────────────────────────────────────────────────── */
@@ -109,7 +143,7 @@ button { cursor: pointer; border-radius: var(--radius); border: none; font: inhe
 .sheet-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(7, 59, 76, 0.28);
   z-index: 3;
 }
 
@@ -119,17 +153,30 @@ button { cursor: pointer; border-radius: var(--radius); border: none; font: inhe
   right: 0;
   bottom: 0;
   z-index: 4;
-  max-height: 70%;
+  max-height: 72%;
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border-radius: 20px 20px 0 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   box-shadow: var(--shadow-sheet);
-  animation: sheet-in 180ms ease-out;
+  animation: sheet-in 190ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* A band of toy colours across the top edge of the sheet. */
+.sheet::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: linear-gradient(90deg,
+    var(--berry) 0 25%, var(--sun) 25% 50%, var(--mint) 50% 75%, var(--sky) 75% 100%);
 }
 
 @keyframes sheet-in {
-  from { transform: translateY(12%); opacity: 0.6; }
+  from { transform: translateY(14%); opacity: 0.5; }
   to   { transform: translateY(0);   opacity: 1; }
 }
 
@@ -139,9 +186,9 @@ button { cursor: pointer; border-radius: var(--radius); border: none; font: inhe
 }
 
 .sheet-grip {
-  width: 36px;
-  height: 4px;
-  margin: 8px auto 0;
+  width: 40px;
+  height: 5px;
+  margin: 14px auto 0;
   border-radius: 999px;
   background: var(--border);
   flex-shrink: 0;
@@ -149,42 +196,45 @@ button { cursor: pointer; border-radius: var(--radius); border: none; font: inhe
 
 .sheet-close {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 34px;
-  height: 34px;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: #f2f4f3;
-  color: var(--text-muted);
+  background: var(--berry);
+  color: #fff;
+  box-shadow: var(--shadow-pop);
 }
 
 .sheet-close svg { width: 18px; height: 18px; }
-.sheet-close:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.sheet-close:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
 
 .sheet-body {
   overflow-y: auto;
-  padding: 12px 20px 24px;
+  padding: 12px 20px 26px;
   -webkit-overflow-scrolling: touch;
 }
 
-.sheet-title { font-size: 20px; line-height: 1.25; padding-right: 36px; }
-.sheet-text { margin-top: 10px; line-height: 1.55; }
+.sheet-title { font-size: 23px; font-weight: 800; line-height: 1.2; padding-right: 40px; }
+.sheet-text { margin-top: 10px; line-height: 1.6; }
+
 .sheet-tip {
-  margin-top: 10px;
-  padding: 10px 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
   border-radius: var(--radius);
-  background: var(--sand);
+  background: var(--surface-tint);
+  border: 2px solid var(--sun);
   line-height: 1.5;
   font-size: 14px;
 }
 
 .photo-grid {
-  margin-top: 14px;
+  margin-top: 16px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 
 .photo-grid img {
@@ -193,21 +243,21 @@ button { cursor: pointer; border-radius: var(--radius); border: none; font: inhe
   object-fit: cover;
   border-radius: var(--radius);
   display: block;
-  background: #f2f4f3;
+  background: var(--border);
 }
 
 /* ── Shared states ─────────────────────────────────────────────────────────── */
 
-.skeleton-group { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+.skeleton-group { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
 
 .skeleton {
-  border-radius: 6px;
-  background: linear-gradient(90deg, #eef1f0 25%, #e2e7e5 37%, #eef1f0 63%);
+  border-radius: 8px;
+  background: linear-gradient(90deg, #eef4f6 25%, #dfeaee 37%, #eef4f6 63%);
   background-size: 400% 100%;
   animation: shimmer 1.3s ease-in-out infinite;
 }
 
-.skeleton--title { height: 22px; width: 65%; }
+.skeleton--title { height: 24px; width: 65%; }
 .skeleton--line  { height: 13px; }
 .skeleton--short { width: 45%; }
 
@@ -221,20 +271,67 @@ button { cursor: pointer; border-radius: var(--radius); border: none; font: inhe
 }
 
 .state { padding: 8px 0; }
-.state--error { color: var(--danger-fg); }
-.state-detail { margin-top: 4px; font-size: 13px; color: var(--text-muted); }
+.state--error { color: var(--danger-fg); font-weight: 600; }
+.state-detail { margin-top: 6px; font-size: 14px; color: var(--ink-soft); }
 
 .btn {
-  margin-top: 12px;
-  padding: 9px 16px;
-  background: var(--green);
+  margin-top: 14px;
+  padding: 11px 20px;
+  border-radius: 999px;
+  background: var(--berry-deep);
   color: #fff;
-  font-weight: 500;
+  font-weight: 700;
+  box-shadow: var(--shadow-pop);
 }
 
-.btn:focus-visible { outline: 2px solid var(--green-dark); outline-offset: 2px; }
+.btn:disabled { background: var(--ink-soft); box-shadow: none; cursor: default; }
+.btn:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+.btn--mint { background: var(--mint-deep); }
+.btn--sky { background: var(--sky-deep); }
+
+.field {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 2px solid var(--border);
+  font-size: 16px;   /* 16px stops iOS Safari zooming in on focus */
+  font-family: inherit;
+  color: var(--ink);
+}
+
+.field:focus { outline: none; border-color: var(--sky); }
+.field[aria-invalid='true'] { border-color: var(--berry); }
 
 /* ── Simple pages (lists, profile, auth) ───────────────────────────────────── */
 
-.page { padding: 20px; max-width: 600px; margin: 0 auto; }
-.page h1 { font-size: 20px; margin-bottom: 12px; }
+.page { padding: 24px 20px 32px; max-width: 620px; margin: 0 auto; }
+.page h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+
+.card-list { margin-top: 16px; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+.card {
+  display: block;
+  padding: 14px 16px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.card:hover { border-color: var(--grape); }
+.card-meta { color: var(--ink-soft); font-weight: 500; margin-left: 8px; }
+
+/* Language switcher */
+.lang-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+.lang-btn {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.lang-btn[aria-pressed='true'] { background: var(--sky); border-color: var(--sky); color: #fff; }
+.lang-btn:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }

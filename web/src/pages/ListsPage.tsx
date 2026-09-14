@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api.js'
+import { useI18n } from '../lib/i18n.js'
 
 interface ListSummary {
   id: string
@@ -10,6 +11,7 @@ interface ListSummary {
 }
 
 export default function ListsPage() {
+  const { t } = useI18n()
   const { data, isLoading, isError, error } = useQuery<ListSummary[]>({
     queryKey: ['lists', 'public'],
     queryFn: () => api.get('/api/lists/public'),
@@ -17,7 +19,7 @@ export default function ListsPage() {
 
   return (
     <div className="page">
-      <h1>Listes publiques</h1>
+      <h1>{t('lists.title')}</h1>
 
       {isLoading && (
         <div className="skeleton-group">
@@ -29,22 +31,22 @@ export default function ListsPage() {
 
       {isError && (
         <p className="state state--error" role="alert">
-          Impossible de charger les listes.{error instanceof Error ? ` ${error.message}` : ''}
+          {t('lists.error')}
+          {error instanceof Error ? ` ${error.message}` : ''}
         </p>
       )}
 
-      {data?.length === 0 && <p className="state-detail">Aucune liste publique pour le moment.</p>}
+      {data?.length === 0 && <p className="state-detail">{t('lists.empty')}</p>}
 
       {data && data.length > 0 && (
-        <ul style={{ marginTop: 12, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <ul className="card-list">
           {data.map((l) => (
             <li key={l.id}>
-              <Link
-                to={`/lists/${l.slug}`}
-                style={{ display: 'block', padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
-              >
-                <strong>{l.translations[0]?.name ?? l.slug}</strong>
-                <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>{l._count.listPlaces} lieux</span>
+              <Link to={`/lists/${l.slug}`} className="card">
+                {l.translations[0]?.name ?? l.slug}
+                <span className="card-meta">
+                  {l._count.listPlaces} {t('lists.places')}
+                </span>
               </Link>
             </li>
           ))}
