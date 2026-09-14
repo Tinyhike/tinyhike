@@ -34,7 +34,13 @@ export interface BuildAppOptions {
  * exercise is exactly what ships.
  */
 export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? true })
+  // trustProxy: nginx is the only thing that can reach this port (UFW blocks 3000),
+  // and it overwrites X-Forwarded-For with the single, realip-resolved visitor IP
+  // rather than appending to a client-supplied chain — so the header can't be spoofed.
+  // Without this, request.ip is always 127.0.0.1 and every visitor shares one
+  // rate-limit bucket: 200 req/min for the entire site, and 5 magic links per 5 min
+  // globally. See ops/nginx/tinyhike.conf.
+  const app = Fastify({ logger: opts.logger ?? true, trustProxy: true })
   const prisma = opts.prisma ?? new PrismaClient()
   const ownsPrisma = !opts.prisma
 
