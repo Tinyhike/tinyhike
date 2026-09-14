@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api.js'
 
 interface Me {
@@ -10,31 +10,55 @@ interface Me {
 }
 
 export default function ProfilePage() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+
   const { data, isLoading } = useQuery<Me>({
     queryKey: ['me'],
-    queryFn: () => api.get('/api/auth/me'),
+    // A 401 here just means "signed out" — retrying it three times only delays the
+    // sign-in prompt.
     retry: false,
+    queryFn: () => api.get('/api/auth/me'),
   })
 
-  if (isLoading) return <p style={{ padding: 16 }}>Loading…</p>
-  if (!data) return (
-    <div style={{ padding: 16 }}>
-      <p>Not signed in.</p>
-      <Link to="/auth">Sign in</Link>
-    </div>
-  )
+  async function signOut() {
+    await api.post('/api/auth/logout', {})
+    // Drop every cached response: some of it is scoped to the user we just left.
+    queryClient.clear()
+    navigate('/')
+  }
+
+  if (isLoading) {
+    return (
+      <div className="page">
+        <div className="skeleton-group">
+          <div className="skeleton skeleton--title" />
+          <div className="skeleton skeleton--line skeleton--short" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="page">
+        <h1>Profil</h1>
+        <p className="state-detail">Tu n’es pas connecté.</p>
+        <Link to="/auth" className="btn" style={{ display: 'inline-block', textDecoration: 'none', color: '#fff' }}>
+          Se connecter
+        </Link>
+      </div>
+    )
+  }
 
   return (
-    <div style={{ padding: 16, maxWidth: 400, margin: '0 auto' }}>
-      <h1>Profile</h1>
-      <p style={{ marginTop: 8 }}>{data.email}</p>
-      {data.handle && <p>@{data.handle}</p>}
-      <p style={{ color: '#666', marginTop: 4 }}>{data.role}</p>
-      <button
-        onClick={() => api.post('/api/auth/logout', {}).then(() => window.location.replace('/'))}
-        style={{ marginTop: 16, padding: '8px 16px', background: '#c0392b', color: '#fff' }}
-      >
-        Sign out
+    <div className="page">
+      <h1>Profil</h1>
+      <p>{data.email}</p>
+      {data.handle && <p className="state-detail">@{data.handle}</p>}
+      <p className="state-detail">{data.role}</p>
+      <button onClick={signOut} className="btn" style={{ background: '#c0392b' }}>
+        Se déconnecter
       </button>
     </div>
   )

@@ -3,14 +3,238 @@
 :root {
   --green: #2d6a4f;
   --green-light: #52b788;
+  --green-dark: #1b4332;
   --sand: #f4f1de;
   --text: #1a1a1a;
+  --text-muted: #5c6660;
+  --surface: #ffffff;
+  --border: #e6e9e7;
+  --danger-bg: #fde8e8;
+  --danger-fg: #9b1c1c;
   --radius: 12px;
+  --shadow-sheet: 0 -4px 24px rgba(0, 0, 0, 0.18);
+
+  /* Tab bar height + the iOS home-indicator inset, so the map and the sheet can
+     both stop exactly above it instead of hiding content behind it. */
+  --tabbar-h: 56px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+
   font-family: system-ui, sans-serif;
   color: var(--text);
+  -webkit-text-size-adjust: 100%;
 }
 
 html, body, #root { height: 100%; }
+body { overscroll-behavior: none; }
 
 a { color: var(--green); }
-button { cursor: pointer; border-radius: var(--radius); border: none; }
+button { cursor: pointer; border-radius: var(--radius); border: none; font: inherit; }
+
+/* ── App shell ─────────────────────────────────────────────────────────────── */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  /* dvh, not vh: mobile browsers shrink the viewport when their chrome appears,
+     and vh would push the tab bar under it. */
+  height: 100dvh;
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;   /* lets the map actually shrink inside the flex column */
+  position: relative;
+  overflow: auto;
+}
+
+.tabbar {
+  display: flex;
+  height: calc(var(--tabbar-h) + var(--safe-b));
+  padding-bottom: var(--safe-b);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-decoration: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.tab svg { width: 22px; height: 22px; }
+.tab--active { color: var(--green); }
+.tab:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+
+/* ── Map ───────────────────────────────────────────────────────────────────── */
+
+.map-page { position: relative; width: 100%; height: 100%; }
+.map-canvas { width: 100%; height: 100%; }
+
+.map-pill, .map-error {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+}
+
+.map-pill {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--green-dark);
+  pointer-events: none;
+}
+
+.map-error {
+  max-width: 90%;
+  border-radius: 8px;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+
+/* ── Place sheet ───────────────────────────────────────────────────────────── */
+
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 3;
+}
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  max-height: 70%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  box-shadow: var(--shadow-sheet);
+  animation: sheet-in 180ms ease-out;
+}
+
+@keyframes sheet-in {
+  from { transform: translateY(12%); opacity: 0.6; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+/* Users who ask for reduced motion get the sheet without the slide. */
+@media (prefers-reduced-motion: reduce) {
+  .sheet { animation: none; }
+}
+
+.sheet-grip {
+  width: 36px;
+  height: 4px;
+  margin: 8px auto 0;
+  border-radius: 999px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.sheet-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #f2f4f3;
+  color: var(--text-muted);
+}
+
+.sheet-close svg { width: 18px; height: 18px; }
+.sheet-close:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+.sheet-body {
+  overflow-y: auto;
+  padding: 12px 20px 24px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sheet-title { font-size: 20px; line-height: 1.25; padding-right: 36px; }
+.sheet-text { margin-top: 10px; line-height: 1.55; }
+.sheet-tip {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--sand);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+.photo-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.photo-grid img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius);
+  display: block;
+  background: #f2f4f3;
+}
+
+/* ── Shared states ─────────────────────────────────────────────────────────── */
+
+.skeleton-group { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+
+.skeleton {
+  border-radius: 6px;
+  background: linear-gradient(90deg, #eef1f0 25%, #e2e7e5 37%, #eef1f0 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.3s ease-in-out infinite;
+}
+
+.skeleton--title { height: 22px; width: 65%; }
+.skeleton--line  { height: 13px; }
+.skeleton--short { width: 45%; }
+
+@keyframes shimmer {
+  from { background-position: 100% 50%; }
+  to   { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+.state { padding: 8px 0; }
+.state--error { color: var(--danger-fg); }
+.state-detail { margin-top: 4px; font-size: 13px; color: var(--text-muted); }
+
+.btn {
+  margin-top: 12px;
+  padding: 9px 16px;
+  background: var(--green);
+  color: #fff;
+  font-weight: 500;
+}
+
+.btn:focus-visible { outline: 2px solid var(--green-dark); outline-offset: 2px; }
+
+/* ── Simple pages (lists, profile, auth) ───────────────────────────────────── */
+
+.page { padding: 20px; max-width: 600px; margin: 0 auto; }
+.page h1 { font-size: 20px; margin-bottom: 12px; }

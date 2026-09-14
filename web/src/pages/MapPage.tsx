@@ -1,7 +1,9 @@
 import { useRef, useEffect, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import { useQuery } from '@tanstack/react-query'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api.js'
+import { getLocale } from '../lib/locale.js'
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
 
@@ -25,13 +27,6 @@ function toFeatureCollection(places: Place[]): GeoJSON.FeatureCollection<GeoJSON
   }
 }
 
-// Escape OSM/user-sourced text before injecting into popup HTML (avoids injection).
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
-  )
-}
-
 export default function MapPage() {
   const mapRef = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
@@ -39,10 +34,17 @@ export default function MapPage() {
   const placesRef = useRef<Place[]>([])
   const [styleReady, setStyleReady] = useState(false)
   const [bbox, setBbox] = useState('4.4,51.8,4.6,51.95') // Rotterdam default
+  const locale = getLocale()
+
+  // Same reason as placesRef: the map's click handlers are registered once, inside
+  // `load`, and would otherwise capture the first render's navigate.
+  const navigate = useNavigate()
+  const navigateRef = useRef(navigate)
+  navigateRef.current = navigate
 
   const { data: places, isLoading, isFetching, isError, error } = useQuery<Place[]>({
-    queryKey: ['places', bbox],
-    queryFn: () => api.get(`/api/places?bbox=${bbox}&locale=nl`),
+    queryKey: ['places', bbox, locale],
+    queryFn: () => api.get(`/api/places?bbox=${bbox}&locale=${locale}`),
   })
 
   // Init the map exactly once; tear it down on unmount (StrictMode double-mounts in dev).
@@ -125,17 +127,17 @@ export default function MapPage() {
         })
       })
 
-      // Click a place → popup with an escaped name and a link to its detail page.
+      // Click a place → open its sheet. This is a client-side route change: the old
+      // popup held a plain <a href>, which reloaded the whole app (and re-initialised
+      // Mapbox) on every single place the user tapped.
       m.on('click', 'unclustered-point', (e) => {
         const feature = e.features?.[0]
         if (!feature) return
-        const coords = (feature.geometry as GeoJSON.Point).coordinates.slice() as [number, number]
-        const name = escapeHtml(String(feature.properties?.name ?? 'Place'))
-        const id = encodeURIComponent(String(feature.properties?.id ?? ''))
-        new mapboxgl.Popup()
-          .setLngLat(coords)
-          .setHTML(`<strong>${name}</strong><br/><a href="/places/${id}">View</a>`)
-          .addTo(m)
+        const id = String(feature.properties?.id ?? '')
+        if (!id) return
+        // Keep the marker clear of the sheet, which covers the lower half.
+        m.easeTo({ center: (feature.geometry as GeoJSON.Point).coordinates as [number, number], offset: [0, -110] })
+        navigateRef.current(`/places/${encodeURIComponent(id)}`)
       })
 
       // Pointer affordance over interactive layers.
@@ -163,47 +165,20 @@ export default function MapPage() {
   }, [places, styleReady])
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
-      <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+    <div className="map-page">
+      <div ref={mapRef} className="map-canvas" />
 
-      {(isLoading || isFetching) && <div style={pillStyle}>Chargement des lieux…</div>}
+      {(isLoading || isFetching) && <div className="map-pill">Chargement des lieux…</div>}
 
       {isError && (
-        <div style={errorStyle} role="alert">
+        <div className="map-error" role="alert">
           Impossible de charger les lieux.
-          {error instanceof Error ? ` (${error.message})` : ''}
+          {error instanceof Error ? ` ${error.message}` : ''}
         </div>
       )}
+
+      {/* The place sheet renders here, over the map, without unmounting it. */}
+      <Outlet />
     </div>
   )
-}
-
-const pillStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 12,
-  left: '50%',
-  transform: 'translateX(-50%)',
-  background: 'rgba(255,255,255,0.95)',
-  color: '#1b4332',
-  padding: '6px 14px',
-  borderRadius: 999,
-  fontSize: 13,
-  fontWeight: 500,
-  boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-  pointerEvents: 'none',
-}
-
-const errorStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 12,
-  left: '50%',
-  transform: 'translateX(-50%)',
-  maxWidth: '90%',
-  background: '#fde8e8',
-  color: '#9b1c1c',
-  padding: '8px 16px',
-  borderRadius: 8,
-  fontSize: 13,
-  fontWeight: 500,
-  boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
 }
