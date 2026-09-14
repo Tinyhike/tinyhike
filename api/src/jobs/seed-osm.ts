@@ -1,52 +1,26 @@
 /**
- * Seed places from OpenStreetMap Overpass API for a given city bbox.
+ * Seed places from the OpenStreetMap Overpass API for a given city bbox.
  * Fetches parks, playgrounds, cafes suitable for stroller hikes.
  *
- * Usage: BBOX="51.8,4.4,51.95,4.6" npm run seed:osm
+ * Usage: BBOX="51.8,4.4,51.95,4.6" pnpm seed:osm
  * BBOX is Overpass order: south,west,north,east (minLat,minLon,maxLat,maxLon).
+ *
+ * The query and the OSM-tag mapping live in lib/osm.ts, shared with
+ * backfill-osm-tags.ts so the two can't drift apart.
  */
 
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
+import { fetchOverpass, mapOsmTags, DEFAULT_BBOX } from '../lib/osm.js'
 
 const prisma = new PrismaClient()
-const OVERPASS = 'https://overpass-api.de/api/interpreter'
-
-const QUERY = (bbox: string) => `
-[out:json][timeout:30];
-(
-  node["leisure"="playground"](${bbox});
-  node["leisure"="park"](${bbox});
-  node["amenity"="cafe"](${bbox});
-  node["tourism"="picnic_site"](${bbox});
-  way["leisure"="park"](${bbox});
-);
-out center tags;`
 
 async function seed() {
-  // Rotterdam default, Overpass order: south,west,north,east (minLat,minLon,maxLat,maxLon)
-  const bbox = process.env.BBOX ?? '51.8,4.4,51.95,4.6'
-  const res = await fetch(OVERPASS, {
-    method: 'POST',
-    // Overpass (Apache) returns 406 to requests with no User-Agent. Must be set.
-    headers: { 'User-Agent': 'TinyHike/1.0 (hello@tinyhike.com)' },
-    body: `data=${encodeURIComponent(QUERY(bbox))}`,
-  })
-  // Guard before parsing: Overpass serves HTML error pages (406/429/504) that would
-  // otherwise crash JSON.parse with a misleading "Unexpected token '<'".
-  if (!res.ok) {
-    const preview = (await res.text()).slice(0, 200)
-    throw new Error(`Overpass HTTP ${res.status} ${res.statusText}: ${preview}`)
-  }
-  const contentType = res.headers.get('content-type') ?? ''
-  if (!contentType.includes('application/json')) {
-    const preview = (await res.text()).slice(0, 200)
-    throw new Error(`Overpass returned non-JSON (${contentType}): ${preview}`)
-  }
-  const data = (await res.json()) as { elements: Array<{ id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }> }
+  const bbox = process.env.BBOX ?? DEFAULT_BBOX
+  const elements = await fetchOverpass(bbox)
 
   let created = 0
-  for (const el of data.elements) {
+  for (const el of elements) {
     const lat = el.lat ?? el.center?.lat
     const lng = el.lon ?? el.center?.lon
     const name = el.tags?.name
@@ -63,6 +37,10 @@ async function seed() {
         osmId,
         source: 'OSM',
         status: 'APPROVED', // OSM is a trusted source — auto-approve (moderation decision, see ROADMAP)
+        // The original seeder asked for `out center tags` and then read only `name`,
+        // throwing away every attribute OSM sent. That's why the first 381 places
+        // had all eleven stroller booleans null.
+        ...mapOsmTags(el.tags),
         translations: { create: { locale: 'nl', name } },
       },
     })
@@ -73,4 +51,8 @@ async function seed() {
   await prisma.$disconnect()
 }
 
-seed()
+seed().catch(async (err) => {
+  console.error(err)
+  await prisma.$disconnect()
+  process.exit(1)
+})

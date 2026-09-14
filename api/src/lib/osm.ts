@@ -1,0 +1,157 @@
+/**
+ * OpenStreetMap ingestion: the Overpass query, the fetch, and the translation from
+ * OSM tags to TinyHike's stroller booleans.
+ *
+ * Shared by `jobs/seed-osm.ts` (new places) and `jobs/backfill-osm-tags.ts`
+ * (existing ones), so the query and the mapping can't drift apart between them.
+ */
+
+const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
+
+export interface OverpassElement {
+  id: number
+  lat?: number
+  lon?: number
+  center?: { lat: number; lon: number }
+  tags?: Record<string, string>
+}
+
+/** Rotterdam default. Overpass order is south,west,north,east. */
+export const DEFAULT_BBOX = '51.8,4.4,51.95,4.6'
+
+export const overpassQuery = (bbox: string) => `
+[out:json][timeout:30];
+(
+  node["leisure"="playground"](${bbox});
+  node["leisure"="park"](${bbox});
+  node["amenity"="cafe"](${bbox});
+  node["tourism"="picnic_site"](${bbox});
+  way["leisure"="park"](${bbox});
+);
+out center tags;`
+
+/** Overpass is a free, frequently-saturated public service; these mean "try later". */
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504])
+const MAX_ATTEMPTS = 5
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+export async function fetchOverpass(bbox: string): Promise<OverpassElement[]> {
+  let lastError = ''
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(OVERPASS_URL, {
+      method: 'POST',
+      // Overpass (Apache) returns 406 to requests with no User-Agent. Must be set.
+      headers: { 'User-Agent': 'TinyHike/1.0 (hello@tinyhike.com)' },
+      body: `data=${encodeURIComponent(overpassQuery(bbox))}`,
+    })
+
+    // Guard before parsing: Overpass serves HTML error pages (406/429/504) that would
+    // otherwise crash JSON.parse with a misleading "Unexpected token '<'".
+    if (!res.ok) {
+      lastError = `HTTP ${res.status} ${res.statusText}: ${(await res.text()).slice(0, 160)}`
+      if (!RETRYABLE_STATUS.has(res.status) || attempt === MAX_ATTEMPTS) {
+        throw new Error(`Overpass ${lastError}`)
+      }
+      // Back off generously: hammering a saturated public instance is what earns
+      // a longer ban, and this runs unattended from cron.
+      const waitMs = 15_000 * attempt
+      console.warn(`Overpass ${res.status}, retrying in ${waitMs / 1000}s (attempt ${attempt}/${MAX_ATTEMPTS})…`)
+      await sleep(waitMs)
+      continue
+    }
+
+    const contentType = res.headers.get('content-type') ?? ''
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Overpass returned non-JSON (${contentType}): ${(await res.text()).slice(0, 200)}`)
+    }
+
+    const data = (await res.json()) as { elements: OverpassElement[] }
+    return data.elements
+  }
+
+  throw new Error(`Overpass unavailable after ${MAX_ATTEMPTS} attempts — last error: ${lastError}`)
+}
+
+/** The stroller booleans on Place. All tri-state: true / false / null = unknown. */
+export interface StrollerTags {
+  napFriendly?: boolean
+  shaded?: boolean
+  smooth?: boolean
+  enclosed?: boolean
+  freeEntry?: boolean
+  hasToilets?: boolean
+  hasParking?: boolean
+  hasCafe?: boolean
+  hasPlayground?: boolean
+  dogFriendly?: boolean
+  wheelchairOk?: boolean
+}
+
+const SMOOTH_SURFACES = new Set(['asphalt', 'paved', 'concrete', 'paving_stones', 'concrete:plates'])
+const ROUGH_SURFACES = new Set(['grass', 'gravel', 'sand', 'dirt', 'ground', 'earth', 'cobblestone', 'unpaved', 'wood', 'pebblestone'])
+const ENCLOSING_BARRIERS = new Set(['fence', 'wall', 'hedge', 'gate', 'bollard'])
+
+/**
+ * Translate one element's OSM tags into the stroller booleans we can honestly infer.
+ *
+ * The guiding rule is **absence of a tag is not a "no"**. An OSM playground with no
+ * `toilets` key doesn't mean there are no toilets — it means nobody recorded it. So
+ * a field is only set when OSM states something explicit, and is otherwise left
+ * out entirely (staying null = "unknown"). Guessing here would be worse than having
+ * no data: a parent who walks to a park because we claimed step-free access has been
+ * actively misled.
+ *
+ * Three tags are deliberately never inferred, because OSM has no equivalent:
+ * `napFriendly` and `shaded` are judgements, and `enclosed` needs a barrier that is
+ * almost never mapped on the point itself. They belong to Claude enrichment or to
+ * user reviews (`Review.tagsConfirmed` / `tagsDisputed`).
+ */
+export function mapOsmTags(tags: Record<string, string> | undefined): StrollerTags {
+  if (!tags) return {}
+  const out: StrollerTags = {}
+
+  // wheelchair=limited is left unknown on purpose: for a stroller it could mean a
+  // single kerb or a flight of steps, and we can't tell which.
+  if (tags.wheelchair === 'yes') out.wheelchairOk = true
+  else if (tags.wheelchair === 'no') out.wheelchairOk = false
+
+  if (tags.toilets === 'yes' || tags.amenity === 'toilets' || tags['toilets:wheelchair']) out.hasToilets = true
+  else if (tags.toilets === 'no') out.hasToilets = false
+
+  if (tags.leisure === 'playground' || tags.playground) out.hasPlayground = true
+
+  if (tags.amenity === 'cafe') out.hasCafe = true
+
+  if (tags.amenity === 'parking' || tags.parking) out.hasParking = true
+
+  // Only the explicit `fee` key. Dutch parks are free in practice, but inferring it
+  // would be inventing data — the exact habit that left every tag null to begin with.
+  if (tags.fee === 'no') out.freeEntry = true
+  else if (tags.fee === 'yes') out.freeEntry = false
+
+  if (tags.dog === 'yes' || tags.dog === 'leashed') out.dogFriendly = true
+  else if (tags.dog === 'no') out.dogFriendly = false
+
+  if (tags.surface) {
+    if (SMOOTH_SURFACES.has(tags.surface)) out.smooth = true
+    else if (ROUGH_SURFACES.has(tags.surface)) out.smooth = false
+  }
+
+  if (tags.barrier && ENCLOSING_BARRIERS.has(tags.barrier)) out.enclosed = true
+
+  return out
+}
+
+/**
+ * Narrow a mapping to the fields still unset on a place, so a re-run can add newly
+ * mapped OSM data without ever overwriting a value a human put there.
+ */
+export function onlyMissing<T extends Record<string, unknown>>(mapped: StrollerTags, current: T): StrollerTags {
+  const out: StrollerTags = {}
+  for (const [key, value] of Object.entries(mapped) as Array<[keyof StrollerTags, boolean]>) {
+    if (current[key] === null || current[key] === undefined) out[key] = value
+  }
+  return out
+}

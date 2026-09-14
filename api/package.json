@@ -12,6 +12,7 @@
     "db:studio": "prisma studio",
     "enrich:pending": "tsx src/jobs/enrich.ts",
     "seed:osm": "tsx src/jobs/seed-osm.ts",
+    "backfill:osm-tags": "tsx src/jobs/backfill-osm-tags.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
