@@ -114,6 +114,50 @@ export function isSameFeature(el: OverpassElement, place: { lat: number; lng: nu
   return Math.abs(coords.lat - place.lat) < 1e-4 && Math.abs(coords.lng - place.lng) < 1e-4
 }
 
+/** The kinds of place the Overpass query selects for. */
+export type PlaceKind = 'playground' | 'park' | 'cafe' | 'picnic_site'
+
+/** Which of our four kinds this element is, or null if it's none of them. */
+export function kindOf(tags: Record<string, string> | undefined): PlaceKind | null {
+  if (!tags) return null
+  if (tags.leisure === 'playground') return 'playground'
+  if (tags.leisure === 'park') return 'park'
+  if (tags.amenity === 'cafe') return 'cafe'
+  if (tags.tourism === 'picnic_site') return 'picnic_site'
+  return null
+}
+
+/**
+ * Fallback names for features OSM leaves unnamed.
+ *
+ * Most playgrounds in OSM have no name — 7 of the 12 around Delfshaven — and they
+ * are exactly what a parent is looking for. Dropping them to keep every pin
+ * individually identifiable made the map emptier where it mattered most, so an
+ * unnamed playground is listed as "Speeltuin" rather than not at all. Several pins
+ * then share a label, which the location on the map already disambiguates.
+ */
+export const GENERIC_NAMES: Record<PlaceKind, Record<'nl' | 'fr' | 'en', string>> = {
+  playground: { nl: 'Speeltuin', fr: 'Aire de jeux', en: 'Playground' },
+  park: { nl: 'Park', fr: 'Parc', en: 'Park' },
+  cafe: { nl: 'Café', fr: 'Café', en: 'Café' },
+  picnic_site: { nl: 'Picknickplek', fr: 'Aire de pique-nique', en: 'Picnic area' },
+}
+
+/**
+ * Translation rows for a place, either from its real OSM name or from the generic
+ * fallback. A real name is a proper noun, so it is kept as-is and written to `nl`
+ * only — enrichment then supplies fr/en. A generic name is written in all three,
+ * so every locale reads naturally without waiting on Claude.
+ */
+export function translationsFor(
+  name: string | undefined,
+  kind: PlaceKind | null,
+): Array<{ locale: string; name: string }> {
+  if (name) return [{ locale: 'nl', name }]
+  if (!kind) return []
+  return Object.entries(GENERIC_NAMES[kind]).map(([locale, generic]) => ({ locale, name: generic }))
+}
+
 /** The stroller booleans on Place. All tri-state: true / false / null = unknown. */
 export interface StrollerTags {
   napFriendly?: boolean

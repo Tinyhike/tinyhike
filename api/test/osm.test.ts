@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { mapOsmTags, onlyMissing, osmIdFor, isSameFeature, elementCoords, overpassQuery } from '../src/lib/osm.js'
+import {
+  mapOsmTags,
+  onlyMissing,
+  osmIdFor,
+  isSameFeature,
+  elementCoords,
+  overpassQuery,
+  translationsFor,
+  kindOf,
+} from '../src/lib/osm.js'
 
 describe('overpassQuery', () => {
   it('asks for nodes, ways and relations', () => {
@@ -99,6 +108,41 @@ describe('mapOsmTags', () => {
     expect(mapped.napFriendly).toBeUndefined()
     expect(mapped.shaded).toBeUndefined()
     expect(mapped.enclosed).toBeUndefined()
+  })
+})
+
+describe('translationsFor', () => {
+  it('keeps a real OSM name as-is, in nl only', () => {
+    // A proper noun isn't translated; enrichment supplies fr/en afterwards.
+    expect(translationsFor('Speelpark BoTu', 'playground')).toEqual([{ locale: 'nl', name: 'Speelpark BoTu' }])
+  })
+
+  it('gives an unnamed feature a generic name in all three locales', () => {
+    // Most OSM playgrounds have no name, and they're exactly what a parent wants on
+    // the map — dropping them left the map emptiest where it mattered most.
+    const rows = translationsFor(undefined, 'playground')
+    expect(rows).toHaveLength(3)
+    expect(rows).toContainEqual({ locale: 'nl', name: 'Speeltuin' })
+    expect(rows).toContainEqual({ locale: 'fr', name: 'Aire de jeux' })
+    expect(rows).toContainEqual({ locale: 'en', name: 'Playground' })
+  })
+
+  it('produces nothing for an unnamed feature of no recognised kind', () => {
+    expect(translationsFor(undefined, null)).toEqual([])
+  })
+})
+
+describe('kindOf', () => {
+  it('recognises the four kinds the query selects for', () => {
+    expect(kindOf({ leisure: 'playground' })).toBe('playground')
+    expect(kindOf({ leisure: 'park' })).toBe('park')
+    expect(kindOf({ amenity: 'cafe' })).toBe('cafe')
+    expect(kindOf({ tourism: 'picnic_site' })).toBe('picnic_site')
+  })
+
+  it('returns null for anything else', () => {
+    expect(kindOf({ amenity: 'pharmacy' })).toBeNull()
+    expect(kindOf(undefined)).toBeNull()
   })
 })
 

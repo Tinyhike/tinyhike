@@ -20,6 +20,8 @@ import {
   legacyOsmId,
   isSameFeature,
   elementCoords,
+  translationsFor,
+  kindOf,
   DEFAULT_BBOX,
 } from '../lib/osm.js'
 
@@ -37,16 +39,13 @@ async function seed() {
 
   for (const el of elements) {
     const coords = elementCoords(el)
-    const name = el.tags?.name
     if (!coords) continue
 
-    // TODO(jerome): unnamed features are dropped here, and in OSM most playgrounds
-    // have no name — 7 of the 12 sampled over Delfshaven. They're exactly the places
-    // a parent wants on the map. Needs a naming decision before we can keep them.
-    if (!name) {
-      unnamed++
-      continue
-    }
+    // Unnamed features used to be dropped, which quietly cost us most playgrounds —
+    // in OSM they rarely carry a name. They now get a generic name per kind.
+    const translations = translationsFor(el.tags?.name, kindOf(el.tags))
+    if (translations.length === 0) continue
+    if (!el.tags?.name) unnamed++
 
     const osmId = osmIdFor(el)
     if (await prisma.place.findUnique({ where: { osmId } })) {
@@ -75,14 +74,15 @@ async function seed() {
         // throwing away every attribute OSM sent. That's why the first 381 places
         // had all eleven stroller booleans null.
         ...mapOsmTags(el.tags),
-        translations: { create: { locale: 'nl', name } },
+        translations: { create: translations },
       },
     })
     created++
   }
 
   console.log(
-    `Seeded ${created} new places; ${skipped} already known, ${migrated} ids migrated to typed form, ${unnamed} skipped for having no name.`,
+    `Seeded ${created} new places (${unnamed} of them unnamed in OSM, given a generic name); ` +
+      `${skipped} already known, ${migrated} ids migrated to typed form.`,
   )
   await prisma.$disconnect()
 }
