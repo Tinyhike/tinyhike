@@ -17,7 +17,7 @@ export class ApiError extends Error {
   }
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+async function req<T>(path: string, init?: RequestInit, opts?: { withHeaders?: boolean }): Promise<T> {
   let res: Response
   try {
     res = await fetch(`${BASE}${path}`, { credentials: 'include', ...init })
@@ -43,12 +43,25 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, code, message)
   }
 
-  if (res.status === 204) return undefined as T
-  return res.json() as Promise<T>
+  const data = res.status === 204 ? (undefined as T) : ((await res.json()) as T)
+  return (opts?.withHeaders ? { data, headers: res.headers } : data) as T
+}
+
+/** A response plus the headers the caller needs — see api.getWithHeaders. */
+export interface WithHeaders<T> {
+  data: T
+  headers: Headers
 }
 
 export const api = {
   get: <T>(path: string) => req<T>(path),
+  /**
+   * Same as `get`, but keeps the response headers. `GET /api/places` reports how
+   * many places the viewport actually holds via X-Total-Count / X-Result-Truncated,
+   * and the map needs that to tell the user when pins are being left out.
+   */
+  getWithHeaders: <T>(path: string) =>
+    req<unknown>(path, undefined, { withHeaders: true }) as Promise<WithHeaders<T>>,
   post: <T>(path: string, body: unknown) =>
     req<T>(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   patch: <T>(path: string, body: unknown) =>

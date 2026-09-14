@@ -13,6 +13,7 @@ const nl = {
 
   'map.loading': 'Plekken laden…',
   'map.error': 'Plekken laden is mislukt.',
+  'map.truncated': '{shown} van {total} plekken — zoom in om alles te zien',
 
   'sheet.close': 'Sluiten',
   'sheet.untitled': 'Naamloze plek',
@@ -55,6 +56,7 @@ const fr: Record<MessageKey, string> = {
 
   'map.loading': 'Chargement des lieux…',
   'map.error': 'Impossible de charger les lieux.',
+  'map.truncated': '{shown} lieux sur {total} — zoome pour tout voir',
 
   'sheet.close': 'Fermer',
   'sheet.untitled': 'Lieu sans nom',
@@ -95,6 +97,7 @@ const en: Record<MessageKey, string> = {
 
   'map.loading': 'Loading places…',
   'map.error': 'Could not load places.',
+  'map.truncated': '{shown} of {total} places — zoom in to see them all',
 
   'sheet.close': 'Close',
   'sheet.untitled': 'Unnamed place',

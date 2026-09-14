@@ -99,6 +99,8 @@ h1, h2, h3 { letter-spacing: -0.01em; }
   pointer-events: none;
 }
 
+.map-pill--warn { background: var(--grape); color: #fff; }
+
 .map-error {
   max-width: 90%;
   background: var(--danger-bg);

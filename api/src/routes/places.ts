@@ -11,11 +11,23 @@ const PlaceSubmitSchema = z.object({
   tips: z.string().max(300).optional(),
 })
 
+const DEFAULT_LIMIT = 200
+const MAX_LIMIT = 500
+
 export default async function placesRoutes(app: FastifyInstance) {
-  // GET /api/places?bbox=west,south,east,north&locale=nl
-  app.get<{ Querystring: { bbox?: string; locale?: string } }>('/', async (req, reply) => {
-    const { bbox, locale = 'nl' } = req.query
+  // GET /api/places?bbox=west,south,east,north&locale=nl&limit=200
+  app.get<{ Querystring: { bbox?: string; locale?: string; limit?: string } }>('/', async (req, reply) => {
+    const { bbox, locale = 'nl', limit: rawLimit } = req.query
     const where: Record<string, unknown> = { status: 'APPROVED' }
+
+    let limit = DEFAULT_LIMIT
+    if (rawLimit !== undefined) {
+      const parsed = Number(rawLimit)
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_LIMIT) {
+        return reply.status(400).send({ error: 'BadRequest', message: `limit must be an integer between 1 and ${MAX_LIMIT}` })
+      }
+      limit = parsed
+    }
 
     // bbox filter (lat/lng range). Validate before use so malformed input can't
     // silently produce NaN bounds and a broken/empty filter.
@@ -32,15 +44,30 @@ export default async function placesRoutes(app: FastifyInstance) {
       where.lng = { gte: west, lte: east }
     }
 
-    const places = await app.prisma.place.findMany({
+    // Fetch one more than asked for: if it comes back, the viewport holds more
+    // places than we're returning. Cheaper than a COUNT on every map pan, and the
+    // client needs to know — silently dropping pins reads as missing data.
+    const rows = await app.prisma.place.findMany({
       where,
       include: {
         translations: { where: { locale } },
         photos: { where: { status: 'APPROVED' }, take: 1 },
         _count: { select: { reviews: true } },
       },
-      take: 200,
+      take: limit + 1,
     })
+
+    const truncated = rows.length > limit
+    const places = truncated ? rows.slice(0, limit) : rows
+
+    reply.header('X-Result-Truncated', String(truncated))
+    if (truncated) {
+      // Only now is the exact total worth a second query.
+      reply.header('X-Total-Count', String(await app.prisma.place.count({ where })))
+    } else {
+      reply.header('X-Total-Count', String(places.length))
+    }
+
     return places
   })
 

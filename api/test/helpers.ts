@@ -24,6 +24,13 @@ export function makePrismaMock() {
       findUnique: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue({ id: 't1' }),
     },
+    route: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
+    photo: {
+      create: vi.fn().mockResolvedValue({ id: 'ph1' }),
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
     review: { create: vi.fn().mockResolvedValue({ id: 'r1' }) },
   }
 }

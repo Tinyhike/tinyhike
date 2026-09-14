@@ -42,10 +42,16 @@ export default function MapPage() {
   const navigateRef = useRef(navigate)
   navigateRef.current = navigate
 
-  const { data: places, isLoading, isFetching, isError, error } = useQuery<Place[]>({
+  // 500 is the API's ceiling. At the default of 200 the Rotterdam seed (381 places)
+  // was being silently cut by nearly half — the map looked complete and wasn't.
+  const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ['places', bbox, locale],
-    queryFn: () => api.get(`/api/places?bbox=${bbox}&locale=${locale}`),
+    queryFn: () => api.getWithHeaders<Place[]>(`/api/places?bbox=${bbox}&locale=${locale}&limit=500`),
   })
+
+  const places = data?.data
+  const truncated = data?.headers.get('X-Result-Truncated') === 'true'
+  const total = data?.headers.get('X-Total-Count')
 
   // Init the map exactly once; tear it down on unmount (StrictMode double-mounts in dev).
   useEffect(() => {
@@ -170,6 +176,14 @@ export default function MapPage() {
       <div ref={mapRef} className="map-canvas" />
 
       {(isLoading || isFetching) && <div className="map-pill">{t('map.loading')}</div>}
+
+      {/* Even at the ceiling a dense viewport can overflow. Say so rather than
+          quietly dropping pins the user has no way of knowing about. */}
+      {!isFetching && truncated && (
+        <div className="map-pill map-pill--warn">
+          {t('map.truncated').replace('{total}', total ?? '?').replace('{shown}', String(places?.length ?? 0))}
+        </div>
+      )}
 
       {isError && (
         <div className="map-error" role="alert">
