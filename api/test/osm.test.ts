@@ -1,5 +1,49 @@
 import { describe, it, expect } from 'vitest'
-import { mapOsmTags, onlyMissing } from '../src/lib/osm.js'
+import { mapOsmTags, onlyMissing, osmIdFor, isSameFeature, elementCoords, overpassQuery } from '../src/lib/osm.js'
+
+describe('overpassQuery', () => {
+  it('asks for nodes, ways and relations', () => {
+    // The original query took playgrounds as nodes only. In OSM a playground is
+    // normally an area, so that missed 10 of the 12 present around Delfshaven.
+    const q = overpassQuery('51.8,4.4,51.95,4.6')
+    expect(q).toContain('nwr["leisure"~"^(park|playground)$"]')
+    expect(q).toContain('out center tags') // areas need a representative point
+  })
+})
+
+describe('osmIdFor', () => {
+  it('keeps ids from colliding across element types', () => {
+    // node 123 and way 123 are unrelated objects, and Place.osmId is unique — the
+    // untyped `osm:123` form would make one of them fail to insert.
+    expect(osmIdFor({ id: 123, type: 'node' })).toBe('osm:node/123')
+    expect(osmIdFor({ id: 123, type: 'way' })).toBe('osm:way/123')
+    expect(osmIdFor({ id: 123, type: 'node' })).not.toBe(osmIdFor({ id: 123, type: 'way' }))
+  })
+})
+
+describe('elementCoords', () => {
+  it('reads a node’s own position', () => {
+    expect(elementCoords({ id: 1, lat: 51.92, lon: 4.48 })).toEqual({ lat: 51.92, lng: 4.48 })
+  })
+
+  it('falls back to the computed centre for ways and relations', () => {
+    expect(elementCoords({ id: 1, center: { lat: 51.92, lon: 4.48 } })).toEqual({ lat: 51.92, lng: 4.48 })
+  })
+
+  it('returns null when neither is present', () => {
+    expect(elementCoords({ id: 1 })).toBeNull()
+  })
+})
+
+describe('isSameFeature', () => {
+  it('accepts a legacy row sitting at the same spot', () => {
+    expect(isSameFeature({ id: 1, lat: 51.92, lon: 4.48 }, { lat: 51.92, lng: 4.48 })).toBe(true)
+  })
+
+  it('rejects an unrelated object that merely shares an id number', () => {
+    expect(isSameFeature({ id: 1, lat: 51.92, lon: 4.48 }, { lat: 51.88, lng: 4.51 })).toBe(false)
+  })
+})
 
 describe('mapOsmTags', () => {
   it('returns nothing for an element with no tags', () => {

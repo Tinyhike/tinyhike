@@ -1,39 +1,73 @@
 /**
  * Seed places from the OpenStreetMap Overpass API for a given city bbox.
- * Fetches parks, playgrounds, cafes suitable for stroller hikes.
+ * Fetches parks, playgrounds, cafes and picnic sites suitable for stroller hikes.
  *
  * Usage: BBOX="51.8,4.4,51.95,4.6" pnpm seed:osm
  * BBOX is Overpass order: south,west,north,east (minLat,minLon,maxLat,maxLon).
  *
  * The query and the OSM-tag mapping live in lib/osm.ts, shared with
- * backfill-osm-tags.ts so the two can't drift apart.
+ * backfill-osm-tags.ts so the two can't drift.
+ *
+ * Re-running is safe: existing places are skipped, never duplicated or overwritten.
  */
 
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
-import { fetchOverpass, mapOsmTags, DEFAULT_BBOX } from '../lib/osm.js'
+import {
+  fetchOverpass,
+  mapOsmTags,
+  osmIdFor,
+  legacyOsmId,
+  isSameFeature,
+  elementCoords,
+  DEFAULT_BBOX,
+} from '../lib/osm.js'
 
 const prisma = new PrismaClient()
 
 async function seed() {
   const bbox = process.env.BBOX ?? DEFAULT_BBOX
   const elements = await fetchOverpass(bbox)
+  console.log(`${elements.length} elements returned for bbox ${bbox}.`)
 
   let created = 0
-  for (const el of elements) {
-    const lat = el.lat ?? el.center?.lat
-    const lng = el.lon ?? el.center?.lon
-    const name = el.tags?.name
-    if (!lat || !lng || !name) continue
+  let skipped = 0
+  let migrated = 0
+  let unnamed = 0
 
-    const osmId = `osm:${el.id}`
-    const existing = await prisma.place.findUnique({ where: { osmId } })
-    if (existing) continue
+  for (const el of elements) {
+    const coords = elementCoords(el)
+    const name = el.tags?.name
+    if (!coords) continue
+
+    // TODO(jerome): unnamed features are dropped here, and in OSM most playgrounds
+    // have no name — 7 of the 12 sampled over Delfshaven. They're exactly the places
+    // a parent wants on the map. Needs a naming decision before we can keep them.
+    if (!name) {
+      unnamed++
+      continue
+    }
+
+    const osmId = osmIdFor(el)
+    if (await prisma.place.findUnique({ where: { osmId } })) {
+      skipped++
+      continue
+    }
+
+    // Rows seeded before ids carried their type are stored as `osm:<id>`. Adopt one
+    // only when the coordinates agree, so a node and a way sharing an id number
+    // can't be mistaken for each other.
+    const legacy = await prisma.place.findUnique({ where: { osmId: legacyOsmId(el) } })
+    if (legacy && isSameFeature(el, legacy)) {
+      await prisma.place.update({ where: { id: legacy.id }, data: { osmId } })
+      migrated++
+      continue
+    }
 
     await prisma.place.create({
       data: {
-        lat,
-        lng,
+        lat: coords.lat,
+        lng: coords.lng,
         osmId,
         source: 'OSM',
         status: 'APPROVED', // OSM is a trusted source — auto-approve (moderation decision, see ROADMAP)
@@ -47,7 +81,9 @@ async function seed() {
     created++
   }
 
-  console.log(`Seeded ${created} places from OSM (bbox: ${bbox})`)
+  console.log(
+    `Seeded ${created} new places; ${skipped} already known, ${migrated} ids migrated to typed form, ${unnamed} skipped for having no name.`,
+  )
   await prisma.$disconnect()
 }
 

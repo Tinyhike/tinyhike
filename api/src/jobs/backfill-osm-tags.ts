@@ -16,7 +16,15 @@
 
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
-import { fetchOverpass, mapOsmTags, onlyMissing, DEFAULT_BBOX, type StrollerTags } from '../lib/osm.js'
+import {
+  fetchOverpass,
+  mapOsmTags,
+  onlyMissing,
+  osmIdFor,
+  legacyOsmId,
+  DEFAULT_BBOX,
+  type StrollerTags,
+} from '../lib/osm.js'
 
 const prisma = new PrismaClient()
 
@@ -28,8 +36,13 @@ async function backfill() {
   const elements = await fetchOverpass(bbox)
   console.log(`${elements.length} elements returned.`)
 
-  // osmId is stored as `osm:<id>` — see seed-osm.ts.
-  const byOsmId = new Map(elements.map((el) => [`osm:${el.id}`, el.tags]))
+  // Index under both id forms: rows seeded before ids carried their type still read
+  // `osm:<id>`, and the seeder migrates them lazily.
+  const byOsmId = new Map<string, Record<string, string> | undefined>()
+  for (const el of elements) {
+    byOsmId.set(osmIdFor(el), el.tags)
+    if (!byOsmId.has(legacyOsmId(el))) byOsmId.set(legacyOsmId(el), el.tags)
+  }
 
   const places = await prisma.place.findMany({
     where: { source: 'OSM', osmId: { not: null } },

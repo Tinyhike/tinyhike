@@ -19,14 +19,19 @@ export interface OverpassElement {
 /** Rotterdam default. Overpass order is south,west,north,east. */
 export const DEFAULT_BBOX = '51.8,4.4,51.95,4.6'
 
+/**
+ * `nwr` is node+way+relation. The original query asked for playgrounds only as
+ * nodes and parks only as nodes-or-ways, which misses most of them: in OSM a
+ * playground is normally drawn as an area. Sampled over Delfshaven, 10 of the 12
+ * parks and playgrounds present were ways — none of them reachable by that query.
+ * `out center` gives areas a representative point, which is all the map needs.
+ */
 export const overpassQuery = (bbox: string) => `
-[out:json][timeout:30];
+[out:json][timeout:90];
 (
-  node["leisure"="playground"](${bbox});
-  node["leisure"="park"](${bbox});
-  node["amenity"="cafe"](${bbox});
-  node["tourism"="picnic_site"](${bbox});
-  way["leisure"="park"](${bbox});
+  nwr["leisure"~"^(park|playground)$"](${bbox});
+  nwr["amenity"="cafe"](${bbox});
+  nwr["tourism"="picnic_site"](${bbox});
 );
 out center tags;`
 
@@ -72,6 +77,41 @@ export async function fetchOverpass(bbox: string): Promise<OverpassElement[]> {
   }
 
   throw new Error(`Overpass unavailable after ${MAX_ATTEMPTS} attempts — last error: ${lastError}`)
+}
+
+/** Representative point for an element — `out center` supplies it for ways/relations. */
+export function elementCoords(el: OverpassElement): { lat: number; lng: number } | null {
+  const lat = el.lat ?? el.center?.lat
+  const lng = el.lon ?? el.center?.lon
+  return lat != null && lng != null ? { lat, lng } : null
+}
+
+/**
+ * OSM ids are only unique *within* a type — node 123 and way 123 are unrelated
+ * objects. The original seeder stored `osm:<id>`, which was survivable while the
+ * query returned almost only nodes, but collides as soon as ways and relations are
+ * included, and `Place.osmId` is unique, so a collision is a hard failure.
+ */
+export function osmIdFor(el: OverpassElement & { type?: string }): string {
+  return `osm:${el.type ?? 'node'}/${el.id}`
+}
+
+/** The pre-typing id format, still on every row seeded before this change. */
+export function legacyOsmId(el: OverpassElement): string {
+  return `osm:${el.id}`
+}
+
+/**
+ * Whether a legacy row is really the same feature as this element.
+ *
+ * A legacy `osm:123` could be node 123 or way 123, and we didn't record which. The
+ * coordinates disambiguate: ~1e-4 degrees is roughly 10 m, far tighter than the gap
+ * between two unrelated features that happen to share an id number.
+ */
+export function isSameFeature(el: OverpassElement, place: { lat: number; lng: number }): boolean {
+  const coords = elementCoords(el)
+  if (!coords) return false
+  return Math.abs(coords.lat - place.lat) < 1e-4 && Math.abs(coords.lng - place.lng) < 1e-4
 }
 
 /** The stroller booleans on Place. All tri-state: true / false / null = unknown. */
