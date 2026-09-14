@@ -2,7 +2,7 @@
 
 > **For agents (Claude Code, claude.ai, others).** Read this first, every session, before touching any code, command, or commit. This file reflects the **actual state** of the project, not the original aspirations.
 
-Last updated: 5 June 2026 — after first working dev environment.
+Last updated: 14 September 2026 — after the first production HTTPS deploy.
 
 ---
 
@@ -24,19 +24,27 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
 - **PostgreSQL 16 + PostGIS 3.6** running natively (no Docker), DB `tinyhike` created with user `tinyhike`, password in `/root/.tinyhike_db_password` and Bitwarden
 - **Prisma schema migrated**, 12 models alive (User, MagicToken, Place, PlaceTranslation, Route, RouteTranslation, Track, Photo, Review, List, ListTranslation, ListPlace, ListCollaborator, Follow)
 - **PostGIS triggers active**: `Place.geom` (Point 4326) and `Route.geom` (LineString 4326) auto-synced from `lat`/`lng`, with GIST indexes for fast spatial queries
-- **API Fastify 5** runs on port 3000 in dev (`cd api && pnpm dev`), all routes loaded (auth, places, routes, photos, lists, admin), CORS configured for `http://localhost:5173`
-- **Web Vite 5 + React 18 + Mapbox GL 3** runs on port 5173 in dev (`cd web && pnpm dev`), shows Rotterdam-centered map, proxies `/api/*` to localhost:3000
-- **Front+back integration validated** — `/api/places?bbox=...` returns 200 OK with empty array (no POI seeded yet)
+- **IN PRODUCTION since 14 Sep 2026** — `https://app.tinyhike.com` (PWA) and `https://api.tinyhike.com` are live over HTTPS. No SSH tunnel needed any more. See `DEPLOY.md` for the runbook.
+  - API runs as the `tinyhike-api` **systemd** service (`node dist/index.js`), enabled, survives reboot
+  - **nginx 1.28.3** terminates TLS with a **Cloudflare Origin cert** (`/etc/ssl/cloudflare/tinyhike.{pem,key}`, `*.tinyhike.com`, expires 2041), serves `web/dist` with SPA fallback, and proxies `/api/*` to `127.0.0.1:3000`
+  - nginx resolves the **real visitor IP** from `CF-Connecting-IP`, and returns **403 to any request that didn't come through Cloudflare**
+  - Config lives in git: `ops/systemd/tinyhike-api.service`, `ops/nginx/tinyhike.conf`, `ops/nginx/cloudflare-*.conf` (regenerate with `ops/scripts/update-cloudflare-ips.sh`)
+- **API Fastify 5** — all routes loaded (auth, places, routes, photos, lists, admin), helmet, per-IP rate limiting, `trustProxy`, global error handler. Dev: `cd api && pnpm dev` on :3000
+- **Web Vite 5 + React 18 + Mapbox GL 3** — clustered Rotterdam map. Dev: `cd web && pnpm dev` on :5173, proxies `/api/*` to :3000
+- **381 POIs seeded from OSM** and enriched by Claude into nl/fr/en (1143 translations). `/api/places?bbox=...` serves them over HTTPS
+- **Vitest** — 6 tests green via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens)
 - **Git repo**: `https://github.com/Tinyhike/tinyhike` (public, MIT, branch `main`), cloned at `/srv/tinyhike/`
 - **External services configured**: Resend (email), Mapbox (tiles, token restricted to `tinyhike.com` / `app.tinyhike.com` / `localhost:5173`), Cloudflare R2 (bucket `tinyhike-photos`, custom domain `photos.tinyhike.com`), Cloudflare Email Routing (`hello@`, `security@`, `conduct@` → Gmail)
 - **DNS + SSL**: `tinyhike.com` (+ `app`, `api`, `photos`, `www`) and `tinyhike.app` (redirect 301) live on Cloudflare, proxied 🟠, SSL Full strict
 
 ### ⏳ What's not done yet
-- **No production deployment** — Traefik + HTTPS routing not set up, services only run in dev mode behind SSH tunnel
-- **No POIs in the database** — seed script exists at `api/src/jobs/seed-osm.ts` but never run yet (next step)
-- **No real users tested** — auth magic-link flow not exercised end-to-end
-- **No photo upload tested** — R2 client wired but no upload flow exercised
-- **No Claude enrichment run** — script exists at `api/src/jobs/enrich.ts`, never executed
+- **No real users tested** — the magic-link flow has still never been exercised end-to-end on a real inbox. Highest-risk untested path.
+- **No photo upload tested** — R2 client wired, upload flow never exercised
+- **Pending kernel reboot** — running `7.0.0-15-generic`, installed is `7.0.0-31-generic`. systemd brings everything back up, so a reboot is safe.
+- **No design pass** — visual identity, "stroller score", place-card icons, a11y all still untouched
+- **`marketing/` not deployed** — apex and `www` have no origin server block yet
+- **No CI** — `pnpm test` runs locally only; `main` is unprotected
+- **`GET /api/places` caps at 200** results with no pagination
 
 ### ⚠️ Known mismatch between vision and code (to decide later)
 Original product vision specified 11 **Place** tags focused on stroller-indoor-friendliness:
@@ -283,6 +291,16 @@ These are real bugs we hit. Reading this list saves 30 min each time.
 9. **Hetzner password reset needs `qemu-guest-agent`** — already installed and running. If a future reset fails, check `systemctl status qemu-guest-agent`. If down, restart it.
 
 10. **Root SSH login is disabled** — only `ssh tinyhike@` works. Don't try `ssh root@`. For emergencies, use the Hetzner web console (lifeboat) with the root password in Bitwarden.
+
+11. **Cloudflare challenges `curl`** — a plain `curl https://api.tinyhike.com/...` gets HTTP 403 and a "Just a moment…" page from Bot Fight Mode. That is the edge, not our origin. Pass a browser `-A` User-Agent, or bypass Cloudflare with `--resolve <host>:443:127.0.0.1`.
+
+12. **`realip` runs before the access phase** — once `real_ip_header CF-Connecting-IP` is set, `$remote_addr` is the *visitor's* IP, so `allow <cloudflare ranges>; deny all;` rejects everyone. Test `$realip_remote_addr` instead (that's what `ops/nginx/cloudflare-geo.conf` does).
+
+13. **Fastify needs `trustProxy` behind nginx** — without it `request.ip` is always `127.0.0.1`, so every visitor shares one rate-limit bucket. Pair it with `proxy_set_header X-Forwarded-For $remote_addr` (not `$proxy_add_x_forwarded_for`), otherwise a caller can prepend a fake IP and dodge the limits.
+
+14. **The magic link must point at `PUBLIC_BASE_URL`** — `/api/auth/verify` sets a host-only cookie. Sending the link to `api.tinyhike.com` sets it on a host the web app never calls, then redirects to `app.tinyhike.com` where the browser won't send it: login fails silently. nginx proxies `/api/*` on the web origin, so keep the whole flow same-origin.
+
+15. **Cloudflare Origin cert gotchas** — generate it in the **`tinyhike.com`** zone (not `tinyhike.app`, which is only a 301 redirect), list **both** `tinyhike.com` and `*.tinyhike.com` (the wildcard doesn't cover the apex), and use the "Click to copy" button: a mouse selection silently drops the `-----BEGIN/END-----` lines and OpenSSL then refuses the file. The private key is shown once — Bitwarden it immediately.
 
 ---
 

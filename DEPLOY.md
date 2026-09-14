@@ -13,21 +13,25 @@
 - [x] #0.1 env-var mismatch fixed (`fc32796`)
 - [x] #0.2 all prod secrets present in `.env` (verified, names only)
 - [x] #0.3 `prisma migrate deploy` → up to date
-- [x] API + web production builds pass; `node dist/index.js` boots (health 200,
-      serves 200 places)
+- [x] API + web production builds pass
 - [x] Config drafts written: `ops/systemd/tinyhike-api.service`,
       `ops/nginx/tinyhike.conf`
-- [ ] **NEEDS JEROME:** generate Cloudflare Origin cert → place on box
-- [ ] **NEEDS SUDO:** install nginx, install systemd unit, install cert, cutover
-- [ ] Post-deploy smoke tests (§3) — incl. never-tested magic-link + photo upload
+- [x] Cloudflare Origin cert generated (`*.tinyhike.com`, `tinyhike.com`, exp.
+      2041) and installed at `/etc/ssl/cloudflare/tinyhike.{pem,key}`
+- [x] nginx 1.28.3 installed, site enabled, `default` removed
+- [x] `tinyhike-api` systemd unit installed, enabled, running
+- [x] **LIVE:** `https://app.tinyhike.com` + `https://api.tinyhike.com` → 200
+- [x] Magic-link cookie bug fixed before it shipped (`d3b5a1c`)
+- [x] Real visitor IP + per-IP rate limiting behind Cloudflare (`8b6b2d2`)
+- [ ] Smoke tests still owed (§3): **magic-link end-to-end**, **photo upload**
+- [ ] Reboot to pick up the pending kernel (`7.0.0-15` → `7.0.0-31`)
+
+**Deployed 2026-09-14.** The app no longer needs the SSH tunnel.
 
 ---
 
-> Nothing system-level has been executed yet. Remaining steps need sudo
-> (I'll ask before each) and the Cloudflare cert (Jerome's dashboard action).
-
-Goal: the app currently runs dev-only behind an SSH tunnel. After this, it's
-reachable over HTTPS at the real domains, survives reboots, and auto-renews TLS.
+Goal: the app used to run dev-only behind an SSH tunnel. It is now reachable over
+HTTPS at the real domains and survives reboots.
 
 ---
 
@@ -124,6 +128,43 @@ Each step notes if it needs **[sudo]** (I'll ask before every sudo command).
 - One **photo upload** to R2 (also never tested end-to-end).
 
 ---
+
+## 3b. Running it day to day
+
+```bash
+# Ship a code change
+cd /srv/tinyhike/api && pnpm build && sudo systemctl restart tinyhike-api
+cd /srv/tinyhike/web && pnpm build          # nginx serves dist/ directly, no reload needed
+
+# Watch the API
+systemctl status tinyhike-api
+journalctl -u tinyhike-api -f
+
+# nginx
+sudo nginx -t && sudo systemctl reload nginx
+tail -f /var/log/nginx/access.log
+
+# Refresh Cloudflare's edge ranges (rare, but they do change)
+ops/scripts/update-cloudflare-ips.sh
+sudo cp ops/nginx/cloudflare-*.conf /etc/nginx/snippets/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Smoke-testing from the box needs a browser User-Agent — Cloudflare's Bot Fight
+Mode serves a challenge (HTTP 403) to the default `curl` UA, which looks like an
+origin failure but isn't:
+
+```bash
+curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" \
+     https://api.tinyhike.com/api/health
+```
+
+To bypass Cloudflare entirely and test the origin, resolve to localhost — the
+origin returns 403 to any other direct hit, by design:
+
+```bash
+curl -sk --resolve app.tinyhike.com:443:127.0.0.1 https://app.tinyhike.com/api/health
+```
 
 ## 4. Rollback
 
