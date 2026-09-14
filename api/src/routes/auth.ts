@@ -23,7 +23,12 @@ export default async function authRoutes(app: FastifyInstance) {
     const expiresAt = new Date(Date.now() + MAGIC_TTL_MIN * 60 * 1000)
     await app.prisma.magicToken.create({ data: { token, userId: user.id, expiresAt } })
 
-    const link = `${process.env.API_BASE_URL}/api/auth/verify?token=${token}`
+    // Deliberately PUBLIC_BASE_URL, not API_BASE_URL: /verify sets a host-only session
+    // cookie, so it must run on the same host the web app lives on. nginx proxies
+    // /api/* on app.tinyhike.com, so this stays same-origin and the cookie is usable
+    // after the redirect below. Pointing at api.tinyhike.com would set the cookie on a
+    // host the app never calls, and login would silently fail.
+    const link = `${process.env.PUBLIC_BASE_URL}/api/auth/verify?token=${token}`
     await resend.emails.send({
       from: `TinyHike <${process.env.RESEND_FROM_EMAIL}>`,
       to: email,
