@@ -1,43 +1,11 @@
+/* Tokens live in their own file so a design handoff has one place to read and
+   write. Everything below is component styling built on top of them. */
+@import './styles/tokens.css';
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* ── Design tokens ──────────────────────────────────────────────────────────
-   Bright toy-box palette: primary colours, not pastels. Each hue has a `-deep`
-   variant that carries white text at an accessible contrast ratio — the bright
-   value is for fills and accents, the deep one for anything with text on it. */
 :root {
-  --berry: #ef476f;
-  --berry-deep: #d81e5b;
-  --sun: #ffd166;
-  --sun-deep: #e08c00;
-  --mint: #06d6a0;
-  --mint-deep: #04936f;
-  --sky: #21a9d8;
-  --sky-deep: #0b6e8f;
-  --grape: #9b5de5;
-  --grape-deep: #7b2cbf;
-
-  --ink: #073b4c;          /* deep teal-navy: reads as "dark" without being black */
-  --ink-soft: #4a6b78;
-  --surface: #ffffff;
-  --surface-tint: #fff8ee; /* warm, not cream-boring: a hint of the sun yellow */
-  --border: #e4ebee;
-
-  --danger-bg: #ffe3ea;
-  --danger-fg: #b0123f;
-
-  --radius: 18px;
-  --radius-lg: 26px;
-  --shadow-sheet: 0 -6px 28px rgba(7, 59, 76, 0.18);
-  --shadow-pop: 0 3px 0 rgba(7, 59, 76, 0.12);
-
-  /* Tab bar height + the iOS home-indicator inset, so the map and the sheet can
-     both stop exactly above it instead of hiding content behind it. */
-  --tabbar-h: 60px;
-  --safe-b: env(safe-area-inset-bottom, 0px);
-
-  /* ui-rounded is the system rounded face on Apple platforms; elsewhere we fall
-     back to the regular UI font rather than pull in a webfont. */
-  font-family: ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', 'Segoe UI Variable', system-ui, sans-serif;
+  font-family: var(--font-ui);
   color: var(--ink);
   -webkit-text-size-adjust: 100%;
 }

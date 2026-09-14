@@ -1,0 +1,57 @@
+/* TinyHike design tokens — the single source of truth for the visual identity.
+ *
+ * Kept apart from component styles so a design handoff (Claude Design /design-sync,
+ * Figma, a hand-written palette) has one small, unambiguous file to read and one to
+ * write back to. See DESIGN.md for the system, and for the two places where these
+ * values are necessarily duplicated in code.
+ *
+ * Direction: bright toy-box. Primary colours, the register of a nursery or a room
+ * full of toys — deliberately not the pastel/cream palette this category defaults to.
+ *
+ * Every hue has a `-deep` variant. Use the bright value for fills, borders and
+ * accents; use `-deep` for anything carrying white text, where the bright value
+ * wouldn't reach 4.5:1 contrast.
+ */
+
+:root {
+  /* ── Palette ─────────────────────────────────────────────────────────────── */
+  --berry: #ef476f;        /* primary action, map pins, "Map" tab */
+  --berry-deep: #d81e5b;
+  --sun: #ffd166;          /* banners, tip callouts, PWA splash + theme colour */
+  --sun-deep: #e08c00;
+  --mint: #06d6a0;         /* positive / confirmed */
+  --mint-deep: #04936f;
+  --sky: #21a9d8;          /* links, focus rings, "Profile" tab */
+  --sky-deep: #0b6e8f;
+  --grape: #9b5de5;        /* map clusters, "Lists" tab */
+  --grape-deep: #7b2cbf;
+
+  /* ── Neutrals ────────────────────────────────────────────────────────────── */
+  --ink: #073b4c;          /* body text: deep teal-navy, reads dark without being black */
+  --ink-soft: #4a6b78;     /* secondary text */
+  --surface: #ffffff;
+  --surface-tint: #fff8ee; /* warm tint drawn from --sun, for callout backgrounds */
+  --border: #e4ebee;
+
+  --danger-bg: #ffe3ea;
+  --danger-fg: #b0123f;
+
+  /* ── Shape ───────────────────────────────────────────────────────────────── */
+  --radius: 18px;          /* cards, inputs, callouts */
+  --radius-lg: 26px;       /* the place sheet */
+  --shadow-sheet: 0 -6px 28px rgba(7, 59, 76, 0.18);
+  --shadow-pop: 0 3px 0 rgba(7, 59, 76, 0.12);  /* flat offset, not a blur — toy-like */
+
+  /* ── Layout ──────────────────────────────────────────────────────────────── */
+  /* Tab bar height plus the iOS home-indicator inset, so the map and the sheet can
+     stop exactly above it instead of hiding content behind it. */
+  --tabbar-h: 60px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+
+  /* ── Type ────────────────────────────────────────────────────────────────── */
+  /* ui-rounded is the system rounded face on Apple platforms; elsewhere this falls
+     back to the regular UI font rather than pull in a webfont. Swapping in a real
+     rounded face (Nunito, Baloo 2, Fredoka) is the single highest-impact typographic
+     change available — it needs a dependency install, so it's Jerome's call. */
+  --font-ui: ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', 'Segoe UI Variable', system-ui, sans-serif;
+}
