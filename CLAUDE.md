@@ -2,7 +2,17 @@
 
 > **For agents (Claude Code, claude.ai, others).** Read this first, every session, before touching any code, command, or commit. This file reflects the **actual state** of the project, not the original aspirations.
 
-Last updated: 26 October 2026 — unverified cafés hidden (place category + admin verification), playground ages and equipment imported from OSM, `places:verify add` (a place the seeder missed, from one OSM element). Previous: 23 October 2026, reviews + photo-upload batch.
+Last updated: 26 October 2026 — **dev separated from production** (`/srv/tinyhike-dev`, see "Dev and production" below), unverified cafés hidden (place category + admin verification), playground ages and equipment imported from OSM, `places:verify add` (a place the seeder missed, from one OSM element). Previous: 23 October 2026, reviews + photo-upload batch.
+
+---
+
+## Dev and production: the rule (Jerome, 26 Oct 2026)
+
+**Code is written and tested in the dev checkout, `/srv/tinyhike-dev`. Production, `/srv/tinyhike`, is only touched to deploy a commit: `git pull`, `migrate deploy`, `build`, `restart`.** No edit, `pnpm dev`, test run or experiment in `/srv/tinyhike`; its `git status` stays empty. Commit in the dev checkout; Jerome pushes from there. Full procedure and the dev environment: `DEPLOY.md` §3a.
+
+- The dev checkout has its own `node_modules` (installed as copies), its own `.env` (API on `127.0.0.1:3100`, `NODE_ENV=development`, sign-in links written to the log with `EMAIL_DELIVERY=log`, no Resend/R2/Anthropic/Telegram key) and its own database `tinyhike_dev` (role `tinyhike_dev`), rebuilt from production by `ops/scripts/dev-db-refresh.sh` **without accounts, reviews, sign-in tokens, photos, lists, follows or tracks**. Nothing is shared with the `tinyhike-api` service or nginx.
+- Operating production **data** is not coding and runs from `/srv/tinyhike` (production's `.env`): `pnpm places:verify`, `pnpm photos:moderate`, the backfills a deploy calls for.
+- Your shell may start in `/srv` or `/srv/tinyhike` (this file is `/srv/CLAUDE.md` → the production checkout's copy): `cd /srv/tinyhike-dev` before any change.
 
 ---
 
@@ -29,7 +39,7 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
   - **nginx 1.28.3** terminates TLS with a **Cloudflare Origin cert** (`/etc/ssl/cloudflare/tinyhike.{pem,key}`, `*.tinyhike.com`, expires 2041), serves `web/dist` with SPA fallback, and proxies `/api/*` to `127.0.0.1:3000`
   - nginx resolves the **real visitor IP** from `CF-Connecting-IP`, and returns **403 to any request that didn't come through Cloudflare**
   - Config lives in git: `ops/systemd/tinyhike-api.service`, `ops/nginx/tinyhike.conf`, `ops/nginx/cloudflare-*.conf` (regenerate with `ops/scripts/update-cloudflare-ips.sh`)
-- **API Fastify 5** — all routes loaded (auth, places, routes, photos, lists, admin), helmet, rate limiting, `trustProxy`, global error handler. Dev: `cd api && pnpm dev` on :3000
+- **API Fastify 5** — all routes loaded (auth, places, routes, photos, lists, admin), helmet, rate limiting, `trustProxy`, global error handler. Dev: `cd /srv/tinyhike-dev/api && pnpm dev` on `127.0.0.1:3100` (`HOST`, `PORT`); production listens on `0.0.0.0:3000` behind nginx
   - **Rate-limit keys fold IPv6 to its /64** — every `keyGenerator` goes through `clientKey(req.ip)` (`api/src/lib/client-key.ts`): IPv4 as-is, IPv4-mapped IPv6 back to IPv4, any other IPv6 cut to its /64. One machine owns a whole /64, so the full address would let it rotate past every limit. The photo routes key per account instead (`user:<id>`, hook `preHandler` so it runs after `requireAuth`).
   - **Session cookie is `__Host-session`** (HttpOnly, Secure, SameSite=Lax, Path=/, no Domain; `SESSION_COOKIE` / `SESSION_COOKIE_OPTIONS` in `api/src/plugins/auth.ts`). The prefix stops a sibling subdomain (`photos.` serves user content) from planting or shadowing a session. Clearing it needs the same Secure + Path=/ attributes, or browsers ignore the clear. Three guards: `requireAuth` (401), `optionalAuth` (attaches the session when valid, never replies), `requireAdmin`.
   - **Magic link returns you where you were** — `POST /api/auth/magic` takes an optional `next` (allowlist `^/(places/<id>|profile|lists)?$`, checked again on `/verify`); an invalid `next` falls back to `/`, never an error.
@@ -44,16 +54,16 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
   - **Approval** re-encodes with sharp (`rotate()`, fit inside 2048×2048, JPEG q82 mozjpeg, `limitInputPixels` 50M). That strips EXIF/GPS and proves the file is a real image. The result goes to the **public** bucket at `p/<photoId>.jpg`, cached `immutable` for a year; only then does the row get an `r2Url`. **Rejection** deletes the bytes. Rejecting an approved photo is a takedown: purge its URL from the Cloudflare cache by hand.
   - Moderation runs from the shell, `pnpm photos:moderate list|approve|reject`, or through `GET`/`PATCH /api/admin/photos` (admin). Both share `api/src/services/photo-moderation.ts`.
   - Without `R2_STAGING_BUCKET`, uploads fail closed: presign/confirm answer 503 and `GET /api/photos/config` says `{ enabled: false }`, so the web hides "Add a photo".
-- **Web Vite 5 + React 18 + Mapbox GL 3** — clustered Rotterdam map. Dev: `cd web && pnpm dev` on :5173, proxies `/api/*` to :3000
+- **Web Vite 5 + React 18 + Mapbox GL 3** — clustered Rotterdam map. Dev: `cd /srv/tinyhike-dev/web && pnpm dev` on `127.0.0.1:5173`, proxies `/api/*` to the dev API on :3100 (`DEV_HOST`, `DEV_API_TARGET` in `web/.env`)
 - **1318 places seeded from OSM** (26 Oct 2026: 854 playgrounds, 159 parks, 14 picnic sites, 274 cafés, 17 that no longer match OSM). **1027 are public**, 291 hidden (cafés and the 17, until verified). `Place.category` comes from the OSM tag (`categoryOf()` in `lib/osm.ts`, filled by `pnpm backfill:osm-tags`). 381 were enriched by Claude into nl/fr/en, 260 of them cafés: about 11% of the public places have a description. **No AI enrichment for now** (Jerome, 26 Oct), and `enrich.ts` only ever takes public places.
 - **Playground details from OSM** — `minAge`, `maxAge` (`min_age` / `max_age`) and `playEquipment` (`playground=*` features inside the playground's outline), filled by `pnpm backfill:playgrounds`, only where unset. Coverage is thin: 61 of 854 playgrounds have equipment, 3 have an age. Returned by the detail (not by the map list); **not displayed yet** (proposal in `docs/plan-cafes-non-verifies.md` §9).
-- **Vitest** — 612 tests green in 16 files via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens). Prisma is mocked (`api/test/helpers.ts`), R2 is `vi.mock`ed: no test touches the network or the DB
+- **Vitest** — 620 tests green in 16 files via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens). Prisma is mocked (`api/test/helpers.ts`), R2 is `vi.mock`ed: no test touches the network or the DB. `vitest.config.ts` pins `EMAIL_DELIVERY=resend` and a fake `RESEND_API_KEY`, so the suite gives the same result in either checkout (pitfall 25)
 - **Magic-link auth works end to end in production** (verified 14 Sep 2026): email delivered by Resend, `/api/auth/verify` hit on the web origin, 302, session cookie usable by the app
 - **Web app has a real shell** — tab bar (Carte/Listes/Profil), place detail as a sheet over a still-mounted map, loading/error states everywhere, interface in nl/fr/en with a switcher, bright toy-box identity (see `DESIGN.md`), generated PWA icons
   - The place sheet carries the amenities (19 tri-state tags with one-tap votes), the rating header + reviews + review form, and "Add a photo" (re-encoded on the device, PUT with progress, cancel, retry).
   - Every session gate reads one `useMe()` hook (`web/src/lib/session.ts`): `pending` / `signedIn` / `signedOut` / `unknown`. `unknown` (a 502, a Cloudflare challenge, offline) shows a retry line, never a sign-in prompt. Logout, and a 401 from the review or photo calls, flip it with `markSignedOut()` (pitfall 23).
   - User-facing errors always come from an i18n key (`web/src/lib/errors.ts`), never from the server's English `message`. An unsent review draft is kept per place in `localStorage` for a day, so it survives the magic-link round trip.
-- **Git repo**: `https://github.com/Tinyhike/tinyhike` (public, MIT, branch `main`), cloned at `/srv/tinyhike/`
+- **Git repo**: `https://github.com/Tinyhike/tinyhike` (public, MIT, branch `main`), cloned at `/srv/tinyhike/` (production, deploys only) and `/srv/tinyhike-dev/` (where code is written)
 - **External services configured**: Resend (email), Mapbox (tiles, token restricted to `tinyhike.com` / `app.tinyhike.com` / `localhost:5173`), Cloudflare R2 (public bucket `tinyhike-photos`, custom domain `photos.tinyhike.com`; private staging bucket `tinyhike-photos-staging` still to create, see `DEPLOY.md` §3c), Cloudflare Email Routing (`hello@`, `security@`, `conduct@` → Gmail)
 - **DNS + SSL**: `tinyhike.com` (+ `app`, `api`, `photos`, `www`) and `tinyhike.app` (redirect 301) live on Cloudflare, proxied 🟠, SSL Full strict
 
@@ -84,7 +94,7 @@ Since 14 Sep 2026 the model has 19 tags (8 indoor/baby ones added, `hasChangingT
 
 ### Hetzner VPS (178.105.100.4)
 - Ubuntu 26.04 LTS, user `tinyhike` (sudo NOPASSWD), home `/home/tinyhike`
-- Project at `/srv/tinyhike/` owned by `tinyhike`
+- Production checkout `/srv/tinyhike/`, dev checkout `/srv/tinyhike-dev/`, both owned by `tinyhike`
 - Node.js 22 LTS, pnpm 11.x
 - PostgreSQL 16 + PostGIS 3.6, listening only on `127.0.0.1:5432` (UFW blocks public)
 - Claude Code CLI installed globally under `~/.npm-global/bin/claude`
@@ -163,7 +173,7 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
 ├── web/
 │   ├── .env                    # VITE_API_URL (empty, uses Vite proxy) + VITE_MAPBOX_TOKEN
 │   ├── package.json            # scripts: dev, build, preview
-│   ├── vite.config.ts          # host 0.0.0.0, port 5173, proxy /api → :3000, PWA config
+│   ├── vite.config.ts          # dev server 127.0.0.1:5173 (DEV_HOST), proxy /api → DEV_API_TARGET, PWA config
 │   ├── tsconfig.json
 │   ├── nginx.conf              # for future Docker prod
 │   ├── Dockerfile              # not used yet
@@ -198,6 +208,7 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
     ├── docker-compose.yml      # not used yet, for future Traefik + DB + api + web + marketing setup
     ├── scripts/
     │   ├── provision.sh        # idempotent VPS setup, already executed
+    │   ├── dev-db-refresh.sh   # rebuild tinyhike_dev from production, without accounts or reviews
     │   └── postgis_setup.sql   # geom columns + triggers + GIST indexes, already applied
     └── traefik/
         └── traefik.yml         # not active yet
@@ -229,6 +240,8 @@ TELEGRAM_BOT_TOKEN    # shared with OpenClaw on Hostinger
 TELEGRAM_USER_ID      # 7581563177
 NODE_ENV              # production (even in dev for now)
 PORT                  # 3000
+HOST                  # unset in production (0.0.0.0, behind nginx); 127.0.0.1 in dev
+EMAIL_DELIVERY        # unset or "resend" in production; "log" in dev only (refused when NODE_ENV=production)
 PUBLIC_BASE_URL       # https://app.tinyhike.com
 API_BASE_URL          # https://api.tinyhike.com
 ACME_EMAIL            # hello@tinyhike.com (for Let's Encrypt later)
@@ -238,7 +251,12 @@ ACME_EMAIL            # hello@tinyhike.com (for Let's Encrypt later)
 ```
 VITE_API_URL          # empty in dev (Vite proxy handles /api/*)
 VITE_MAPBOX_TOKEN     # same as MAPBOX_PUBLIC_TOKEN
+DEV_HOST              # dev checkout only: 127.0.0.1 (the Vite dev server's address)
+DEV_API_TARGET        # dev checkout only: http://127.0.0.1:3100
 ```
+
+### Dev `.env` (`/srv/tinyhike-dev/.env`, chmod 600)
+Its own `DATABASE_URL` (role and database `tinyhike_dev`), its own `JWT_SECRET`, `NODE_ENV=development`, `HOST=127.0.0.1`, `PORT=3100`, `PUBLIC_BASE_URL=http://localhost:5173`, `EMAIL_DELIVERY=log`. **Never a production secret**: no Resend, R2, Anthropic or Telegram key (`DEPLOY.md` §3a).
 
 ### Source of truth for secrets
 **Bitwarden vault** owned by Jerome. Never read or write secrets to any other location. Never commit `.env` or any file containing real secrets.
@@ -248,7 +266,7 @@ VITE_MAPBOX_TOKEN     # same as MAPBOX_PUBLIC_TOKEN
 ## Daily dev workflow
 
 ### Starting a dev session
-Workflow assumes tmux on the VPS to survive SSH disconnects (see `FICHE_RELANCE.md` for full tmux/SSH setup).
+Workflow assumes tmux on the VPS to survive SSH disconnects (see `FICHE_RELANCE.md` for full tmux/SSH setup). Everything happens in the **dev checkout**.
 
 ```bash
 # From laptop
@@ -256,44 +274,55 @@ ssh tinyhike    # or ssh tinyhike@178.105.100.4
 
 # On VPS
 tmux new -A -s tinyhike    # attach if exists, create if not
-git pull origin main
+cd /srv/tinyhike-dev && git pull --ff-only
 
 # In pane 0
-cd /srv/tinyhike/api && pnpm dev    # API on :3000
+cd /srv/tinyhike-dev/api && pnpm dev    # API on 127.0.0.1:3100, dev database
 
 # Ctrl+B " — split pane 1
-cd /srv/tinyhike/web && pnpm dev    # Web on :5173
+cd /srv/tinyhike-dev/web && pnpm dev    # Web on 127.0.0.1:5173, proxies /api to :3100
 
 # Ctrl+B % — split pane 2
-cd /srv/tinyhike                    # free pane for git, claude, ad-hoc
+cd /srv/tinyhike-dev                    # free pane for git, claude, ad-hoc
 ```
 
-In a separate PowerShell on laptop, open the SSH tunnel:
+On the laptop, open the SSH tunnel to the dev web server only:
 ```powershell
-ssh tinyhike-tunnel    # forwards :5173 and :3000 to localhost
+ssh -L 5173:127.0.0.1:5173 tinyhike    # the old tinyhike-tunnel also forwarded :3000, production's API: not needed
 ```
 
-Then browse `http://localhost:5173` on laptop. Magic.
+Then browse `http://localhost:5173` on laptop. To sign in, ask for a link: it is written in pane 0 ("magic link written to the log"), not mailed.
 
 ### Detaching (do NOT exit)
 `Ctrl+B` then `D` — session keeps running. Reattach with `tmux attach -t tinyhike` anytime.
 
 ### Commands you'll use often
 ```bash
-# Restart API after .env change
-cd /srv/tinyhike/api && pnpm dev    # tsx watch auto-restarts on file save
+# Restart the dev API after .env change
+cd /srv/tinyhike-dev/api && pnpm dev    # tsx watch auto-restarts on file save
 
-# Prisma after schema change. There is only one database, production: never
-# `migrate dev` (it diffs against the live DB, sees geom/triggers/the partial index
-# as drift and offers a reset). Generate the SQL offline from the two schema files:
-cd /srv/tinyhike/api
+# Tests, before every commit (dev checkout)
+cd /srv/tinyhike-dev/api && pnpm test
+
+# Prisma after schema change, in the dev checkout. Never `migrate dev`, in either
+# database (it diffs against the live DB, sees geom/triggers/the partial index as
+# drift and offers a reset). Generate the SQL offline from the two schema files:
+cd /srv/tinyhike-dev/api
 npx prisma format
 git show HEAD:api/prisma/schema.prisma > /tmp/schema.before.prisma
 mkdir prisma/migrations/<YYYYMMDDHHMMSS>_<name>
 npx prisma migrate diff --from-schema-datamodel /tmp/schema.before.prisma \
   --to-schema-datamodel prisma/schema.prisma --script > prisma/migrations/<…>/migration.sql
-# Read migration.sql (no DROP, nothing on geom / trg_place_geom / Review_one_written_per_user_per_place),
-# pg_dump, then: pnpm db:migrate && pnpm db:generate     (db:migrate = migrate deploy, never resets)
+# Read migration.sql (no DROP, nothing on geom / trg_place_geom / Review_one_written_per_user_per_place).
+# Apply it to the dev database first: pnpm db:migrate && pnpm db:generate (db:migrate = migrate deploy, never resets).
+# Production gets it with the deploy (DEPLOY.md §3a): pg_dump, then the same two commands in /srv/tinyhike/api.
+
+# Fresh dev data from production (drops tinyhike_dev; accounts, reviews etc. left out)
+/srv/tinyhike-dev/ops/scripts/dev-db-refresh.sh
+
+# Deploy a commit to production: DEPLOY.md §3a (git pull, migrate deploy, build, restart; nothing else)
+
+# --- Operating production data: from /srv/tinyhike (production's .env), not code ---
 
 # Verify a café after a visit (until the admin UI exists)
 cd /srv/tinyhike/api
@@ -309,25 +338,27 @@ pnpm photos:moderate list                  # PENDING queue, oldest first (also: 
 pnpm photos:moderate approve <photoId>     # re-encode → public bucket, prints the public URL
 pnpm photos:moderate reject <photoId> [note...]   # deletes the bytes; on an APPROVED photo it prints a URL to purge
 
-# Apply PostGIS triggers (only after a fresh migrate that touched Place or Route)
-sudo -u postgres psql -d tinyhike -f /srv/tinyhike/ops/scripts/postgis_setup.sql
-
 # Seed OSM POIs for Rotterdam, then fill categories, tags and playground details
+# (run it in /srv/tinyhike-dev first, against the dev database)
 cd /srv/tinyhike/api && pnpm seed:osm
 DRY_RUN=1 pnpm backfill:osm-tags && pnpm backfill:osm-tags        # category + tags, only where null
 DRY_RUN=1 pnpm backfill:playgrounds && pnpm backfill:playgrounds  # min/max age + equipment, only where unset
 
-# Run Claude enrichment on pending POIs
+# Run Claude enrichment on pending POIs (paused: no AI enrichment for now, Jerome 26 Oct)
 cd /srv/tinyhike/api && pnpm enrich:pending
 
-# Inspect DB
+# --- Back to dev ---
+# Apply PostGIS triggers (only after a fresh migrate that touched Place or Route; production: -d tinyhike)
+sudo -u postgres psql -d tinyhike_dev -f /srv/tinyhike-dev/ops/scripts/postgis_setup.sql
+
+# Inspect DB (tinyhike_dev for the dev one)
 sudo -u postgres psql -d tinyhike
 \dt          # list tables
 \d "Place"   # show Place schema
 SELECT COUNT(*) FROM "Place" WHERE status = 'PENDING';
 
-# Prisma Studio (visual DB browser, runs on :5555)
-cd /srv/tinyhike/api && npx prisma studio
+# Prisma Studio (visual DB browser, runs on :5555), on the dev database
+cd /srv/tinyhike-dev/api && npx prisma studio
 # Tunnel from laptop: ssh -L 5555:localhost:5555 tinyhike
 ```
 
@@ -360,7 +391,7 @@ These are real bugs we hit. Reading this list saves 30 min each time.
 
 5. **PostGIS columns are NOT in Prisma schema** — `Place.geom` and `Route.geom` are managed by `postgis_setup.sql`. Do not add them to `schema.prisma` — Prisma can't handle `geometry(Point, 4326)` cleanly. To query them, use `prisma.$queryRaw` with `ST_DWithin`, `ST_Intersects`, `ST_AsGeoJSON`, etc.
 
-6. **Vite default host is localhost-only** — for dev access via SSH tunnel, `vite.config.ts` must set `server.host: '0.0.0.0'`. Already done.
+6. **The Vite dev server listens on 127.0.0.1 only** — `DEV_HOST` in the dev `web/.env`, `127.0.0.1` by default. An SSH tunnel (`ssh -L 5173:127.0.0.1:5173 tinyhike`) reaches it; nothing else does. It used to be `0.0.0.0` (UFW was the only thing keeping it private). Keep port 5173: it is the one the Mapbox token allows (pitfall 7).
 
 7. **Mapbox URL restrictions** — token is restricted to `tinyhike.com`, `app.tinyhike.com`, `localhost:5173`. If you change ports or domains, update the token in Mapbox dashboard or the map renders blank/gray with 403 in Network tab.
 
@@ -397,6 +428,8 @@ These are real bugs we hit. Reading this list saves 30 min each time.
 23. **TanStack Query v5 keeps the old data when a refetch fails** — if the `['me']` query threw on a 401, the cached user would stay on screen and every session gate would stay open. A parent whose session expired would keep seeing the review form until the post failed. `web/src/lib/session.ts` follows two rules. The query function resolves `null` for 401/404, because signed out is data, not an error. And whatever learns the session is gone calls `markSignedOut()`, which does `setQueryData(['me'], null)` at once. Invalidating `['me']` is not enough: the stale user stays until a refetch succeeds.
 
 24. **`NOT` over a nullable column skips the NULL rows** — Postgres logic is three-valued: for a place whose `category` is NULL, `category IN (…)` is unknown, and `NOT (unknown)` is still unknown, so the row matches neither a filter nor its negation. `{ NOT: publicPlaceWhere }` would silently miss every place with no category, exactly the hidden ones. Count hidden places by subtraction (total − public), as `GET /api/admin/stats` does, or test `category: null` explicitly. The JS side has the mirror trap: in a test fixture that lacks `verifiedAt`, `verifiedAt !== null` is true, so `isPublicPlace()` compares with `!= null` to stay closed on undefined.
+
+25. **Tests read the checkout's `.env`** — `app.ts` loads `.env` through dotenv, which never overrides a variable already set. In the dev checkout that `.env` says `EMAIL_DELIVERY=log` and has no Resend key, so building the app in tests either took the log path or threw `Missing API key` (265 failures on the first run). `vitest.config.ts` pins `EMAIL_DELIVERY=resend` and a fake `RESEND_API_KEY`: the suite gives the same result in the prod and the dev checkout, and no test holds the real key. Anything new a test relies on goes there too, never into a `.env`.
 
 ---
 
@@ -444,38 +477,38 @@ Raise these in chat with Jerome, never resolve them yourself.
 Beyond regular dev, agents are great for **targeted audits** and **batch refactors**. Run these as dedicated sessions in tmux panes when Jerome is asleep or busy. Each task below is a self-contained prompt — start a fresh `claude` session, paste the task, and let it run.
 
 ### Security audit (high priority before any prod deploy)
-> "Audit `/srv/tinyhike/api/src/` for security issues. Focus on: SQL injection in `$queryRaw` calls, missing auth checks on routes that modify data, secret leakage in logs or error responses, JWT verification correctness, CORS configuration too permissive, missing rate limiting on auth endpoints, predictable IDs (cuid is fine but check), photo upload validation (file size, mime type, no path traversal in R2 keys). Output a markdown report with severity (critical/high/medium/low) and a concrete fix proposal per finding. Don't apply fixes yet, just propose them."
+> "Audit `/srv/tinyhike-dev/api/src/` for security issues. Focus on: SQL injection in `$queryRaw` calls, missing auth checks on routes that modify data, secret leakage in logs or error responses, JWT verification correctness, CORS configuration too permissive, missing rate limiting on auth endpoints, predictable IDs (cuid is fine but check), photo upload validation (file size, mime type, no path traversal in R2 keys). Output a markdown report with severity (critical/high/medium/low) and a concrete fix proposal per finding. Don't apply fixes yet, just propose them."
 
 ### Schema integrity check
-> "Read `/srv/tinyhike/api/prisma/schema.prisma` and `/srv/tinyhike/ops/scripts/postgis_setup.sql`. Verify: every model has matching opposite relations, no orphaned foreign keys, every nullable field is intentional, every Prisma `Unsupported` type has a corresponding setup in postgis_setup.sql, every GIST index is correctly defined. Output discrepancies as a list with line numbers."
+> "Read `/srv/tinyhike-dev/api/prisma/schema.prisma` and `/srv/tinyhike-dev/ops/scripts/postgis_setup.sql`. Verify: every model has matching opposite relations, no orphaned foreign keys, every nullable field is intentional, every Prisma `Unsupported` type has a corresponding setup in postgis_setup.sql, every GIST index is correctly defined. Output discrepancies as a list with line numbers."
 
 ### Route coverage matrix
-> "Read all files in `/srv/tinyhike/api/src/routes/`. For each route, list: HTTP method, path, auth required (yes/no/optional), Zod or JSON schema validation present (yes/no), error handling (yes/no), Prisma calls (count), logs (yes/no). Output as a markdown table. Flag any route missing schema validation or auth where it should have one."
+> "Read all files in `/srv/tinyhike-dev/api/src/routes/`. For each route, list: HTTP method, path, auth required (yes/no/optional), Zod or JSON schema validation present (yes/no), error handling (yes/no), Prisma calls (count), logs (yes/no). Output as a markdown table. Flag any route missing schema validation or auth where it should have one."
 
 ### Frontend audit
-> "Audit `/srv/tinyhike/web/src/`. Check: every page has a loading state, every API call handles errors, no hardcoded URLs (should use `VITE_API_URL` or relative paths), no `any` types, no `useEffect` infinite loops, Mapbox cleanup on unmount, accessibility (alt text, aria labels, focus management). Output a list of issues with file:line references."
+> "Audit `/srv/tinyhike-dev/web/src/`. Check: every page has a loading state, every API call handles errors, no hardcoded URLs (should use `VITE_API_URL` or relative paths), no `any` types, no `useEffect` infinite loops, Mapbox cleanup on unmount, accessibility (alt text, aria labels, focus management). Output a list of issues with file:line references."
 
 ### Performance scan
-> "Read `/srv/tinyhike/api/src/routes/places.ts` and the corresponding Prisma calls. For the `GET /api/places?bbox=...` endpoint specifically: estimate the query complexity, check if PostGIS GIST index is used (via `EXPLAIN`), check if we paginate or limit results, check if we include too many relations. Suggest concrete optimizations. Same for any other route doing spatial queries."
+> "Read `/srv/tinyhike-dev/api/src/routes/places.ts` and the corresponding Prisma calls. For the `GET /api/places?bbox=...` endpoint specifically: estimate the query complexity, check if PostGIS GIST index is used (via `EXPLAIN`), check if we paginate or limit results, check if we include too many relations. Suggest concrete optimizations. Same for any other route doing spatial queries."
 
 ### Dependency hygiene
-> "Run `pnpm outdated` in both `/srv/tinyhike/api` and `/srv/tinyhike/web`. Identify: major version bumps available (call them out, don't upgrade), security advisories via `pnpm audit`, deprecated subdependencies. Output a prioritized upgrade plan, distinguishing 'safe patch updates', 'minor needs testing', 'major needs Jerome's call'."
+> "Run `pnpm outdated` in both `/srv/tinyhike-dev/api` and `/srv/tinyhike-dev/web`. Identify: major version bumps available (call them out, don't upgrade), security advisories via `pnpm audit`, deprecated subdependencies. Output a prioritized upgrade plan, distinguishing 'safe patch updates', 'minor needs testing', 'major needs Jerome's call'."
 
 ### Test scaffolding
-> "We have zero tests right now. Set up Vitest in `/srv/tinyhike/api` with: `vitest.config.ts`, a `test/` directory, one example test for `places.ts` (mocking Prisma), one integration test using a real test DB. Add `pnpm test` script. Do NOT modify existing source code, just add the testing infrastructure."
+> "We have zero tests right now. Set up Vitest in `/srv/tinyhike-dev/api` with: `vitest.config.ts`, a `test/` directory, one example test for `places.ts` (mocking Prisma), one integration test using a real test DB. Add `pnpm test` script. Do NOT modify existing source code, just add the testing infrastructure."
 
 ### Documentation generation
-> "Read every route file and generate a clean OpenAPI 3.1 spec at `/srv/tinyhike/api/openapi.yaml`. Use Fastify's built-in `getSchemas()` if schemas are already JSON Schema, otherwise extract from code. Include auth requirements, request/response shapes, error codes. Validate the YAML against the OpenAPI 3.1 schema."
+> "Read every route file and generate a clean OpenAPI 3.1 spec at `/srv/tinyhike-dev/api/openapi.yaml`. Use Fastify's built-in `getSchemas()` if schemas are already JSON Schema, otherwise extract from code. Include auth requirements, request/response shapes, error codes. Validate the YAML against the OpenAPI 3.1 schema."
 
 ### Refactor `lat/lng` → PostGIS-aware helper
 > "Currently `Place` and `Route` use `lat: Float, lng: Float` with a trigger syncing `geom`. Create a helper `api/src/lib/geo.ts` with: `latLngFromGeom(geom: string)`, `bboxToPolygon(bbox: string)`, `withinBbox(bbox)` returning a Prisma `where` clause for `ST_Intersects`. Refactor `places.ts` to use these helpers. Add JSDoc and one example call in a comment."
 
 ### Cleanup
-> "Find and remove dead code in `/srv/tinyhike/`: unused imports, unreferenced functions, empty TypeScript files, commented-out code blocks older than the latest commit, `console.log` statements, `TODO` comments older than 7 days (list them, don't delete). Run `tsc --noEmit` after changes to verify nothing breaks."
+> "Find and remove dead code in `/srv/tinyhike-dev/`: unused imports, unreferenced functions, empty TypeScript files, commented-out code blocks older than the latest commit, `console.log` statements, `TODO` comments older than 7 days (list them, don't delete). Run `tsc --noEmit` after changes to verify nothing breaks."
 
 ### When using these prompts
 - Always run in a tmux pane, not in the main dev pane
-- Always start with `cd /srv/tinyhike && git status` — clean working tree before audits
+- Always start with `cd /srv/tinyhike-dev && git status` — clean working tree before audits (never run them in `/srv/tinyhike`, production)
 - After agent finishes, review the proposed changes with `git diff` before committing
 - If the agent suggests upgrades or refactors, **commit them as separate commits** with clear conventional commit messages
 
@@ -483,8 +516,8 @@ Beyond regular dev, agents are great for **targeted audits** and **batch refacto
 
 ## When you're a fresh Claude Code session, do this first
 
-1. `cd /srv/tinyhike && git status` — clean tree?
-2. `git pull origin main` — sync with GitHub
+1. `cd /srv/tinyhike-dev && git status` — the dev checkout, where code is written. Clean tree?
+2. `git pull --ff-only` — sync with GitHub (production, `/srv/tinyhike`, is only touched to deploy: `DEPLOY.md` §3a)
 3. `cat .env.example` — refresh your memory on which secrets exist
 4. `ls api/src/routes/` and `ls web/src/pages/` — current surface
 5. `npx prisma migrate status` (from `api/`) — any pending migrations?

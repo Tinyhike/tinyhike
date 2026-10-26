@@ -38,6 +38,9 @@
       the API restart (a null category is hidden, so an API ahead of the backfill
       shows an empty map), `pnpm backfill:playgrounds`, then API. No web build.
       Smoke test: `X-Total-Count` 1026 on the default bbox, a café → 404.
+- [x] Dev environment separated from production (26 Oct 2026): `/srv/tinyhike-dev`,
+      database `tinyhike_dev` without accounts or reviews, sign-in links in the log.
+      From now on production only takes deploys (§3a).
 - [ ] Photo uploads: one-time Cloudflare setup + browser smoke test (§3c). The UI
       ships with the batch but stays hidden until `R2_STAGING_BUCKET` is set.
 - [ ] Reboot to pick up the pending kernel (`7.0.0-15` → `7.0.0-38` now), with the
@@ -146,16 +149,99 @@ Each step notes if it needs **[sudo]** (I'll ask before every sudo command).
 
 ---
 
+## 3a. Dev and production: the rule (Jérôme, 26 Oct 2026)
+
+**Code is written and tested in the dev checkout, `/srv/tinyhike-dev`. Production,
+`/srv/tinyhike`, is only touched to deploy a commit: `git pull`, `migrate deploy`,
+`build`, `restart`.** No edit, no `pnpm dev`, no test run, no experiment in
+`/srv/tinyhike`. `git status` there is always empty.
+
+Operating production data is not coding and still runs from `/srv/tinyhike`
+(its `.env` is production's): `pnpm places:verify`, `pnpm photos:moderate`, and
+the backfills a deploy calls for.
+
+### The dev environment
+
+| | Production | Dev |
+|---|---|---|
+| Checkout | `/srv/tinyhike` | `/srv/tinyhike-dev`, its own clone (`origin` = GitHub) |
+| `node_modules` | its own | its own, installed as copies (`--package-import-method=copy`): no file shared with production |
+| Database | `tinyhike`, role `tinyhike` | `tinyhike_dev`, role `tinyhike_dev` (password only in the dev `.env`; it can't read production's tables) |
+| Data | everything | production's places, routes and translations; **no accounts, reviews, sign-in tokens, photos, lists, follows or tracks** |
+| API | systemd `tinyhike-api`, `0.0.0.0:3000` behind nginx | `pnpm dev` in tmux, `127.0.0.1:3100` (`HOST`, `PORT` in the dev `.env`) |
+| Web | `web/dist` served by nginx | Vite on `127.0.0.1:5173`, proxying `/api` to `:3100` (`DEV_HOST`, `DEV_API_TARGET` in `web/.env`). 5173 is the port the Mapbox token allows |
+| Sign-in e-mails | sent by Resend | written to the API's log (`EMAIL_DELIVERY=log`, refused under `NODE_ENV=production`) |
+| Secrets | production's `.env` | none of production's: no Resend, R2, Anthropic or Telegram key, so photo uploads are off and enrichment can't run |
+| systemd, nginx | yes | nothing |
+
+```bash
+# A dev session (tmux on the VPS)
+cd /srv/tinyhike-dev && git pull --ff-only
+cd api && pnpm dev                      # API on 127.0.0.1:3100
+cd ../web && pnpm dev                   # web on 127.0.0.1:5173 (another pane)
+# From the laptop: ssh -L 5173:127.0.0.1:5173 tinyhike, then http://localhost:5173
+# Signing in: the link is in the API pane, line "magic link written to the log".
+
+# Before committing
+cd /srv/tinyhike-dev/api && pnpm test && pnpm build
+cd ../web && pnpm build                 # dev's own dist/, served by nothing
+
+# A schema change: generate the SQL offline (CLAUDE.md), apply it to dev first
+cd /srv/tinyhike-dev/api && pnpm db:migrate && pnpm db:generate
+
+# Fresh data from production (drops tinyhike_dev; accounts and reviews left out)
+/srv/tinyhike-dev/ops/scripts/dev-db-refresh.sh
+cd /srv/tinyhike-dev/api && pnpm db:migrate   # if dev has migrations production doesn't
+
+# Publish (Jérôme, with his PAT)
+cd /srv/tinyhike-dev && git push origin main
+```
+
+Set up once on 26 Oct 2026, to redo it from scratch:
+
+```bash
+sudo install -d -o tinyhike -g tinyhike /srv/tinyhike-dev
+git clone --no-hardlinks /srv/tinyhike /srv/tinyhike-dev      # or from GitHub
+cd /srv/tinyhike-dev && git remote set-url origin https://github.com/Tinyhike/tinyhike.git
+(cd api && pnpm install --frozen-lockfile --package-import-method=copy && pnpm db:generate)
+(cd web && pnpm install --frozen-lockfile --package-import-method=copy)
+# Role: printf keeps the password out of the process list.
+PW=$(openssl rand -hex 24)
+printf "CREATE ROLE tinyhike_dev LOGIN PASSWORD '%s';\n" "$PW" | sudo -u postgres psql
+# .env (chmod 600): DATABASE_URL=postgresql://tinyhike_dev:$PW@127.0.0.1:5432/tinyhike_dev,
+#   a new JWT_SECRET, NODE_ENV=development, HOST=127.0.0.1, PORT=3100,
+#   PUBLIC_BASE_URL=http://localhost:5173, API_BASE_URL=http://localhost:3100,
+#   EMAIL_DELIVERY=log, RESEND_FROM_EMAIL. Then: ln -s ../.env api/.env
+# web/.env: VITE_API_URL=, VITE_MAPBOX_TOKEN (the public pk. token),
+#   DEV_HOST=127.0.0.1, DEV_API_TARGET=http://127.0.0.1:3100
+ops/scripts/dev-db-refresh.sh
+```
+
+### Deploying a commit to production
+
+```bash
+cd /srv/tinyhike
+git status --short                      # must print nothing
+git pull --ff-only origin main          # after Jérôme's push
+#   not pushed yet: git pull --ff-only /srv/tinyhike-dev main (same commits, same history)
+cd api
+pnpm install --frozen-lockfile          # ONLY when api/pnpm-lock.yaml changed
+# ONLY when api/prisma/migrations/ changed: a dump first, then migrate deploy
+sudo -u postgres pg_dump -Fc tinyhike > ~/backups/tinyhike-$(date +%Y%m%d-%H%M).dump
+pnpm db:migrate && pnpm db:generate     # db:migrate = prisma migrate deploy, never `migrate dev` (pitfall 22)
+# any backfill the batch calls for, DRY_RUN=1 first
+pnpm build && sudo systemctl restart tinyhike-api   # API first: the new web may call routes only the new API has
+cd ../web
+pnpm install --frozen-lockfile          # ONLY when web/pnpm-lock.yaml changed
+pnpm build                              # ONLY when web/ changed; nginx serves dist/ directly
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/health
+```
+
+---
+
 ## 3b. Running it day to day
 
 ```bash
-# Ship a code change (API first: the web build may call routes only the new API has)
-cd /srv/tinyhike/api && pnpm test
-pnpm db:migrate && pnpm db:generate         # ONLY when api/prisma/migrations/ changed: db:migrate = prisma migrate deploy
-                                            #   (never `migrate dev` here, see CLAUDE.md pitfall 22)
-pnpm build && sudo systemctl restart tinyhike-api
-cd /srv/tinyhike/web && pnpm build          # nginx serves dist/ directly, no reload needed
-
 # Watch the API
 systemctl status tinyhike-api
 journalctl -u tinyhike-api -f
