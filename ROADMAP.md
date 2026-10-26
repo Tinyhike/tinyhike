@@ -1,10 +1,10 @@
 # TinyHike — Roadmap & To-Do
 
 > Living planning doc. Pairs with `CLAUDE.md` (source-of-truth state) and `DESIGN.md`
-> (visual system). Last updated: **23 October 2026** — after the reviews +
-> photo-upload batch (accounts for ratings, private photo staging, moderation).
-> Previous update: 14 September 2026, after production deploy, auth verified,
-> dataset rebuilt, and a product recentering session with Jerome.
+> (visual system). Last updated: **26 October 2026** — unverified cafés hidden,
+> admin verification of places, playground ages and equipment from OSM.
+> Previous updates: 23 October 2026 (reviews + photo upload), 14 September 2026
+> (production deploy, dataset rebuilt, product recentering with Jerome).
 
 ---
 
@@ -34,7 +34,34 @@ child in Rotterdam.
 | Amenity tag votes | **One tap, anonymous, no account.** The voter's id is kept only when they happen to be signed in. |
 | Photos | **Unmoderated bytes are never publicly reachable.** Uploads go to a private staging bucket; a human approves; only then is a re-encoded, EXIF-free copy published. |
 
+### Decisions locked (26 Oct 2026, Jerome)
+| Question | Decision |
+|---|---|
+| What the map shows | **Playgrounds, parks and picnic sites, plus verified places.** The 274 cafés and the 17 places that no longer match OSM stay in the DB, hidden until verified. |
+| What "verified" means | An admin's visit records **4 points, yes or no**: step-free entrance, room for the stroller inside, changing table, toilets. A verified café may say "no": that tells parents which ones to avoid. Date and author kept, never shown. |
+| Approval vs verification | **Two separate actions.** Approving a parent's proposal does not verify it. |
+| Admin | Jerome's account is ADMIN. |
+| Descriptions | **No AI enrichment for now**, and never of hidden places. Instead, playground ages and equipment from OSM (display still to design). |
+
 ---
+
+## What the 26 October 2026 batch delivered
+
+- **Unverified cafés hidden.** `Place.category` from the OSM tag (854 playgrounds,
+  159 parks, 14 picnic sites, 274 cafés, 17 with none). One visibility rule
+  (`api/src/lib/place-visibility.ts`) replaces four copies, and covers every route,
+  `my-review` included (it had no check at all). **1027 public places, 291 hidden.**
+  No web change: a hidden café's link answers the existing "not found" sheet.
+- **Verification of places** — `pnpm places:verify` on the VPS, and the admin routes
+  `GET /api/admin/places`, `PUT`/`DELETE /api/admin/places/:id/verification`.
+- **Playground details from OSM** — `minAge` / `maxAge` and the equipment kinds
+  (`pnpm backfill:playgrounds`). Thin coverage: 61 of 854 playgrounds with
+  equipment, 3 with an age. Not displayed yet (proposal in
+  `docs/plan-cafes-non-verifies.md` §9).
+- **Migrations generated offline** with `prisma migrate diff`, never `migrate dev`.
+- **563 Vitest tests green** (was 395).
+- **`docs/MAINTENANCE.md`** — the maintenance window procedure (apt, PostgreSQL,
+  PostGIS, Node, reboot, rollback), prepared, not run.
 
 ## What the 23 October 2026 batch delivered
 
@@ -129,7 +156,10 @@ The pitch's core: rate, comment, correct, add. Order:
 - No messaging. No feeds beyond "what people you follow shared".
 
 ### Continuous
-- Enrich the 937 new places (nl/fr/en) — **needs Jerome's go, ~937×3 Claude calls**.
+- **Verify cafés** on visits (`pnpm places:verify`): each verified café comes back on
+  the map, with its four points.
+- AI enrichment **paused** (Jerome, 26 Oct). When it resumes, `enrich.ts` only takes
+  public places: about 918 of them have no description today (11% have one).
 - Wire Hostinger crons (OSM diff, enrich, photo moderation, Telegram digest). The
   digest is a natural place for "N photos waiting for review".
 - CI running `pnpm test` on push; Postgres dump cron before real users.
@@ -145,8 +175,20 @@ The pitch's core: rate, comment, correct, add. Order:
   needs OG/Twitter meta + favicon before sharing in parent groups.
 - Vestigial `CLAUDE` value in `PlaceSource` enum (provenance now via `enrichedAt`).
 - JWT expiry behaviour: document + test (jose checks `exp`; make it explicit).
-- 9 legacy places whose OSM element no longer matches the query (renamed/deleted
-  upstream) — periodic reconciliation job someday.
+- 17 places whose OSM element no longer matches the query (9 legacy: a pub, a
+  fast-food, a restaurant, an untagged node, 5 deleted; 8 typed: 2 ex-cafés, 5
+  ex-playgrounds, 1 untagged). Hidden since 26 Oct (no category). A periodic
+  reconciliation job someday.
+- 22 OSM playgrounds are `access=private` and 14 `access=customers` (schoolyards,
+  residential courtyards, café terraces): still on the map. Hiding them is a product
+  call.
+- `requireAdmin`, and the ADMIN branch of `canSeePlace()`, trust the role in the
+  JWT, which lives 30 days: a demoted admin keeps admin reads (and photo
+  moderation) until then. The writes that change what the public sees (verify,
+  unverify, category) re-check the role in the DB. With one account this is
+  theory; a role/version claim or a shorter session would close it.
+- The web orders a sheet's amenity groups from `hasCafe`; `category` is now in the
+  payload and would be the right signal.
 - Photo takedowns need a manual Cloudflare cache purge (public photos are cached
   `immutable` for a year). Automating it needs a Cloudflare API token with
   cache-purge rights only, not the R2 key.
@@ -159,7 +201,8 @@ The pitch's core: rate, comment, correct, add. Order:
 ## Open product decisions (for Jerome)
 
 1. ~~**Tag design**~~ — resolved 14 Sep (validated mockup, shipped in `c173764`).
-2. **Enrichment run for the 937 new places** — cost vs. empty descriptions.
+2. ~~**Enrichment run for the 937 new places**~~ — paused (26 Oct): no AI
+   enrichment for now; OSM playground details instead.
 3. Photo moderation latency: today a human runs `pnpm photos:moderate`. Next:
    03:00 cron (up to 21h) vs on-upload Claude vision.
 4. OSM data ownership when users edit OSM-sourced places (fork vs overlay).
@@ -178,6 +221,13 @@ The pitch's core: rate, comment, correct, add. Order:
 - [x] ~~Phase A step 1: place sheet with tags + reviews~~ (14 Sep + 23 Oct).
 - [x] **Deploy the 23 Oct batch** (done 23 Oct) (`DEPLOY.md` §3b): migration, then API, then
       web. Every parent gets signed out once (cookie renamed to `__Host-session`).
+- [ ] **Jerome: push the 26 Oct commits**, then sign out and in again: the ADMIN
+      role is read from the session.
+- [ ] **Jerome: verify the first cafés** (`pnpm places:verify`, see `CLAUDE.md`).
+- [ ] **Jerome: maintenance window** (`docs/MAINTENANCE.md`, from his own SSH
+      session).
+- [ ] Decide how the sheet shows playground ages and equipment
+      (`docs/plan-cafes-non-verifies.md` §9).
 - [ ] **Jerome: photo uploads setup** — the Cloudflare checklist and smoke test
       in `DEPLOY.md` §3c (staging bucket, CORS, lifecycle, token scope,
       `R2_STAGING_BUCKET`).

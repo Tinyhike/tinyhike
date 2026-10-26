@@ -31,9 +31,17 @@
       `20261023120000_photo_staging_and_review_dedupe`, then API, then web (§3b).
       The session cookie is renamed to `__Host-session`, so **every parent is
       signed out once**. Uploads stay off until §3c is done.
+- [x] Hidden-cafés batch (26 Oct 2026), deployed 26 Oct: `pg_dump`, migrations
+      `20261026120000_place_category_and_verification` and
+      `20261026120100_playground_age_and_equipment` (generated offline with
+      `prisma migrate diff`), `pnpm backfill:osm-tags` (dry run, then real) **before**
+      the API restart (a null category is hidden, so an API ahead of the backfill
+      shows an empty map), `pnpm backfill:playgrounds`, then API. No web build.
+      Smoke test: `X-Total-Count` 1026 on the default bbox, a café → 404.
 - [ ] Photo uploads: one-time Cloudflare setup + browser smoke test (§3c). The UI
       ships with the batch but stays hidden until `R2_STAGING_BUCKET` is set.
-- [ ] Reboot to pick up the pending kernel (`7.0.0-15` → `7.0.0-31`)
+- [ ] Reboot to pick up the pending kernel (`7.0.0-15` → `7.0.0-38` now), with the
+      package, PostgreSQL, PostGIS and Node updates: `docs/MAINTENANCE.md`
 
 **Deployed 2026-09-14.** The app no longer needs the SSH tunnel.
 

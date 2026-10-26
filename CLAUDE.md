@@ -2,7 +2,7 @@
 
 > **For agents (Claude Code, claude.ai, others).** Read this first, every session, before touching any code, command, or commit. This file reflects the **actual state** of the project, not the original aspirations.
 
-Last updated: 23 October 2026 — after the reviews + photo-upload batch (accounts for ratings, private photo staging, moderation).
+Last updated: 26 October 2026 — unverified cafés hidden (place category + admin verification), playground ages and equipment imported from OSM. Previous: 23 October 2026, reviews + photo-upload batch.
 
 ---
 
@@ -33,7 +33,8 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
   - **Rate-limit keys fold IPv6 to its /64** — every `keyGenerator` goes through `clientKey(req.ip)` (`api/src/lib/client-key.ts`): IPv4 as-is, IPv4-mapped IPv6 back to IPv4, any other IPv6 cut to its /64. One machine owns a whole /64, so the full address would let it rotate past every limit. The photo routes key per account instead (`user:<id>`, hook `preHandler` so it runs after `requireAuth`).
   - **Session cookie is `__Host-session`** (HttpOnly, Secure, SameSite=Lax, Path=/, no Domain; `SESSION_COOKIE` / `SESSION_COOKIE_OPTIONS` in `api/src/plugins/auth.ts`). The prefix stops a sibling subdomain (`photos.` serves user content) from planting or shadowing a session. Clearing it needs the same Secure + Path=/ attributes, or browsers ignore the clear. Three guards: `requireAuth` (401), `optionalAuth` (attaches the session when valid, never replies), `requireAdmin`.
   - **Magic link returns you where you were** — `POST /api/auth/magic` takes an optional `next` (allowlist `^/(places/<id>|profile|lists)?$`, checked again on `/verify`); an invalid `next` falls back to `/`, never an error.
-  - **Place visibility and privacy** — `GET /api/places/:id` is 404 unless the place is APPROVED or the caller submitted it (or is ADMIN). Public payloads never carry user ids (`submittedById`, `uploadedById`, a review's `userId`, a list owner's id) or moderation notes.
+  - **Place visibility and privacy** — one rule, `api/src/lib/place-visibility.ts` (Jerome, 26 Oct 2026): the public sees APPROVED places whose `category` is PLAYGROUND, PARK or PICNIC_SITE, **plus any APPROVED place an admin has verified** (`verifiedAt` set). Cafés and places with a null category stay in the DB, hidden until verified. It is an allowlist: a null or new category fails closed. Every route goes through it (`publicPlaceWhere` for queries and counts, `canSeePlace()` per place): map + `X-Total-Count`, detail, reviews, my-review, review/tag-vote POST, photo confirm, lists (content, counts, add), admin stats, enrichment. A hidden place is 404 to everyone but its submitter and ADMINs. Public payloads never carry user ids (`submittedById`, `verifiedById`, `uploadedById`, a review's `userId`, a list owner's id), the verification date (`verifiedAt`, and `updatedAt`, which a verification stamps to the same instant), or moderation notes.
+  - **Place verification = an admin's visit** — four points, each yes or no: step-free entrance (`wheelchairOk`), room for the stroller inside (`isStrollerWide`), changing table (`hasChangingTable`), toilets (`hasToilets`). They are written to those existing tags, so the sheet shows them with no web change, "no" included (a verified café can be one to avoid). `verifiedAt` + `verifiedById` record when and who. `pnpm places:verify` (CLI) and `PUT`/`DELETE /api/admin/places/:id/verification` share `api/src/services/place-verification.ts`; the verifier must be ADMIN **in the DB**, not just in the JWT (same check on unverify, and on a `category` change through `PATCH`, since both change what the public sees). Approving a parent's proposal (`PATCH /api/admin/places/:id`, which can also set `category`) is a separate action and never verifies. Jerome's account is ADMIN since 26 Oct 2026 (the only account); the role is read from the JWT, so it takes effect at his next sign-in (log out, then sign in again).
 - **Reviews: stars and comments need an account** — one written review (score and/or comment) per parent per place; posting again updates it (200) instead of adding one (201). Enforced in the DB by the partial unique index `Review_one_written_per_user_per_place` (migration `20261023120000_photo_staging_and_review_dedupe`, see pitfall 22). Reviews are **displayed anonymously** ("Un parent"): no UI sets a handle yet, so the web always sends `anonymous: true`. The place detail carries the first 20 written reviews, `reviewCount`, `scoreAvg`, `scoreCount`, `voteCount` and `nextCursor`; `GET /api/places/:id/reviews?cursor=` pages the rest, `GET /api/places/:id/my-review` prefills the form. `POST /api/places/:id/reviews` is limited to 30/min per client, body 8 KB, comment 500 chars.
 - **Amenity tag votes stay one tap and anonymous** — the "À confirmer" yes/no chips need no account. A vote is a tag-only Review row; `userId` is stored when the voter happens to be signed in. Tags are checked against `TAG_KEYS` (`api/src/lib/tags.ts`, the 19 keys, held in sync with `web/src/lib/tags.ts` by `api/test/tags.test.ts`). Tag-only rows never count as reviews and never push written reviews out of the list.
 - **Photo pipeline built end to end, OFF in production until the one-time setup** (`DEPLOY.md` §3c). Unmoderated bytes are never publicly reachable:
@@ -43,8 +44,9 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
   - Moderation runs from the shell, `pnpm photos:moderate list|approve|reject`, or through `GET`/`PATCH /api/admin/photos` (admin). Both share `api/src/services/photo-moderation.ts`.
   - Without `R2_STAGING_BUCKET`, uploads fail closed: presign/confirm answer 503 and `GET /api/photos/config` says `{ enabled: false }`, so the web hides "Add a photo".
 - **Web Vite 5 + React 18 + Mapbox GL 3** — clustered Rotterdam map. Dev: `cd web && pnpm dev` on :5173, proxies `/api/*` to :3000
-- **381 POIs seeded from OSM** and enriched by Claude into nl/fr/en (1143 translations). `/api/places?bbox=...` serves them over HTTPS
-- **Vitest** — 395 tests green in 11 files via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens). Prisma is mocked (`api/test/helpers.ts`), R2 is `vi.mock`ed: no test touches the network or the DB
+- **1318 places seeded from OSM** (26 Oct 2026: 854 playgrounds, 159 parks, 14 picnic sites, 274 cafés, 17 that no longer match OSM). **1027 are public**, 291 hidden (cafés and the 17, until verified). `Place.category` comes from the OSM tag (`categoryOf()` in `lib/osm.ts`, filled by `pnpm backfill:osm-tags`). 381 were enriched by Claude into nl/fr/en, 260 of them cafés: about 11% of the public places have a description. **No AI enrichment for now** (Jerome, 26 Oct), and `enrich.ts` only ever takes public places.
+- **Playground details from OSM** — `minAge`, `maxAge` (`min_age` / `max_age`) and `playEquipment` (`playground=*` features inside the playground's outline), filled by `pnpm backfill:playgrounds`, only where unset. Coverage is thin: 61 of 854 playgrounds have equipment, 3 have an age. Returned by the detail (not by the map list); **not displayed yet** (proposal in `docs/plan-cafes-non-verifies.md` §9).
+- **Vitest** — 563 tests green in 15 files via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens). Prisma is mocked (`api/test/helpers.ts`), R2 is `vi.mock`ed: no test touches the network or the DB
 - **Magic-link auth works end to end in production** (verified 14 Sep 2026): email delivered by Resend, `/api/auth/verify` hit on the web origin, 302, session cookie usable by the app
 - **Web app has a real shell** — tab bar (Carte/Listes/Profil), place detail as a sheet over a still-mounted map, loading/error states everywhere, interface in nl/fr/en with a switcher, bright toy-box identity (see `DESIGN.md`), generated PWA icons
   - The place sheet carries the amenities (19 tri-state tags with one-tap votes), the rating header + reviews + review form, and "Add a photo" (re-encoded on the device, PUT with progress, cancel, retry).
@@ -56,9 +58,9 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
 
 ### ⏳ What's not done yet
 - **Photo uploads are off in production** until Jerome does the one-time Cloudflare setup in `DEPLOY.md` §3c: create the private staging bucket, set its CORS and its `uploads/` lifecycle rule, widen the R2 token to both buckets, set `R2_STAGING_BUCKET`. The code ships dark: the web hides the button until then.
-- **No admin UI yet (CLI only)** — photos are moderated with `pnpm photos:moderate` on the VPS (or the admin-only `/api/admin/photos` routes), places with `PATCH /api/admin/places/:id`. No Claude vision auto-moderation either: every photo waits for a human.
+- **No admin UI yet (CLI only)** — photos are moderated with `pnpm photos:moderate` on the VPS (or the admin-only `/api/admin/photos` routes), proposals with `PATCH /api/admin/places/:id`, and places are verified with `pnpm places:verify` (or `GET /api/admin/places`, `PUT`/`DELETE /api/admin/places/:id/verification`). No Claude vision auto-moderation either: every photo waits for a human.
 - **No way to set a handle** — `User.handle` has no writer, so every review shows as "Un parent". Signed reviews need a product decision first (handles vs first names, opt-in toggle).
-- **Pending kernel reboot** — running `7.0.0-15-generic`, installed is `7.0.0-31-generic`. systemd brings everything back up, so a reboot is safe.
+- **Pending kernel reboot and package updates** — running `7.0.0-15-generic`. The full procedure (dump, apt, PostgreSQL/PostGIS/Node from their repos, reboot, checks, rollback) is `docs/MAINTENANCE.md`, prepared 26 Oct 2026, not yet run. Jerome runs it from his own SSH session.
 - **No design pass yet** for the "stroller score" and place-card icons (the identity and the a11y floor are in `DESIGN.md`)
 - **`marketing/` not deployed** — apex and `www` have no origin server block yet
 - **No CI** — `pnpm test` runs locally only; `main` is unprotected
@@ -72,6 +74,8 @@ Actual Prisma `Place` model has these instead (more outdoor/park-oriented):
 `napFriendly`, `shaded`, `smooth`, `enclosed`, `freeEntry`, `hasToilets`, `hasParking`, `hasCafe`, `hasPlayground`, `dogFriendly`, `wheelchairOk`
 
 The scaffold drifted from the vision. **Do not refactor this without discussing with Jerome first.** The current tags work for parks/playgrounds (Rotterdam OSM seed). The original 11 might be added in a follow-up migration when going beyond parks (cafés, restaurants).
+
+Since 14 Sep 2026 the model has 19 tags (8 indoor/baby ones added, `hasChangingTable`, `isStrollerWide`, `hasElevator`… among them). Café verification (26 Oct) reuses four of them, so their meaning is now fixed by that use: `wheelchairOk` = step-free entrance (labelled "Sans marche"), `isStrollerWide` = room for the stroller inside (labelled "Passage large", narrower than what is checked: a label tweak is a web change, not done).
 
 ---
 
@@ -97,7 +101,7 @@ The scaffold drifted from the vision. **Do not refactor this without discussing 
 ### Hostinger VPS (separate, do not touch from TinyHike)
 IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jobs targeting TinyHike** (not yet wired):
 - `02:00` → OSM Overpass diff → POST to TinyHike API
-- `02:30` → trigger `pnpm enrich:pending` on TinyHike VPS
+- `02:30` → trigger `pnpm enrich:pending` on TinyHike VPS — **paused**: no AI enrichment for now (Jerome, 26 Oct 2026); don't wire it
 - `03:00` → Claude vision moderation on uploaded photos
 - `06:30` → Telegram digest to Jerome
 
@@ -117,7 +121,8 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
 ├── api/
 │   ├── .env -> ../.env         # symlink to root .env (Prisma reads from here)
 │   ├── package.json            # scripts: dev, build, start, test, db:generate, db:migrate (= prisma migrate deploy), db:studio,
-│   │                           #          enrich:pending, seed:osm, backfill:osm-tags, photos:moderate
+│   │                           #          enrich:pending, seed:osm, backfill:osm-tags, backfill:playgrounds,
+│   │                           #          photos:moderate, places:verify
 │   ├── tsconfig.json
 │   ├── prisma/
 │   │   ├── schema.prisma       # 12 models, source of truth for DB (except the partial index, pitfall 22)
@@ -129,11 +134,14 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
 │   │   │   └── auth.ts         # __Host-session cookie, requireAuth / optionalAuth / requireAdmin
 │   │   ├── lib/
 │   │   │   ├── client-key.ts   # rate-limit key: IPv4 as-is, IPv6 cut to its /64
-│   │   │   ├── osm.ts          # Overpass query + OSM tags → stroller booleans (shared by the OSM jobs)
+│   │   │   ├── osm.ts          # Overpass query + OSM tags → stroller booleans and category (shared by the OSM jobs)
+│   │   │   ├── osm-playgrounds.ts  # playground ages + equipment: outlines, point-in-polygon, normalisation
+│   │   │   ├── place-visibility.ts # THE visibility rule: publicPlaceWhere, canSeePlace, private columns
 │   │   │   ├── r2.ts           # the only S3 client: staging + public buckets, presign, copy, head, get, put
 │   │   │   └── tags.ts         # TAG_KEYS, the 19 amenity tags (mirrors web/src/lib/tags.ts)
 │   │   ├── services/
-│   │   │   └── photo-moderation.ts  # list / approve (sharp re-encode → public bucket) / reject / purge-legacy
+│   │   │   ├── photo-moderation.ts  # list / approve (sharp re-encode → public bucket) / reject / purge-legacy
+│   │   │   └── place-verification.ts # list / verify (4 points + date + admin) / unverify
 │   │   ├── routes/
 │   │   │   ├── auth.ts         # magic-link send (with `next`), verify, me, logout
 │   │   │   ├── places.ts       # GET (bbox + locale), GET detail, POST, reviews: list, my-review, post (upsert)
@@ -143,9 +151,11 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
 │   │   │   └── admin.ts        # stats, place moderation, photo moderation (list, approve/reject), seed bulk
 │   │   └── jobs/
 │   │       ├── seed-osm.ts     # Overpass API → Place INSERT (Rotterdam bbox default)
-│   │       ├── backfill-osm-tags.ts  # fill null stroller tags on already-seeded places from OSM
-│   │       ├── enrich.ts       # Claude Sonnet 4.6 → PlaceTranslation (nl/fr/en)
-│   │       └── moderate-photos.ts    # pnpm photos:moderate list | approve | reject | purge-legacy
+│   │       ├── backfill-osm-tags.ts  # fill null stroller tags and category on already-seeded places from OSM
+│   │       ├── backfill-playground-details.ts  # fill playground ages + equipment from OSM
+│   │       ├── enrich.ts       # Claude Sonnet 4.6 → PlaceTranslation (nl/fr/en), public places only
+│   │       ├── moderate-photos.ts    # pnpm photos:moderate list | approve | reject | purge-legacy
+│   │       └── verify-places.ts      # pnpm places:verify list | verify | unverify
 │   ├── test/                   # Vitest: mocked Prisma (helpers.ts), R2 mocked, never the network
 │   └── Dockerfile              # not used yet, kept for future Docker setup
 ├── web/
@@ -271,11 +281,23 @@ Then browse `http://localhost:5173` on laptop. Magic.
 # Restart API after .env change
 cd /srv/tinyhike/api && pnpm dev    # tsx watch auto-restarts on file save
 
-# Prisma after schema change
+# Prisma after schema change. There is only one database, production: never
+# `migrate dev` (it diffs against the live DB, sees geom/triggers/the partial index
+# as drift and offers a reset). Generate the SQL offline from the two schema files:
 cd /srv/tinyhike/api
 npx prisma format
-npx prisma migrate dev --name describe_change_briefly   # if it reports drift and offers a reset: answer NO (pitfall 22)
-npx prisma generate
+git show HEAD:api/prisma/schema.prisma > /tmp/schema.before.prisma
+mkdir prisma/migrations/<YYYYMMDDHHMMSS>_<name>
+npx prisma migrate diff --from-schema-datamodel /tmp/schema.before.prisma \
+  --to-schema-datamodel prisma/schema.prisma --script > prisma/migrations/<…>/migration.sql
+# Read migration.sql (no DROP, nothing on geom / trg_place_geom / Review_one_written_per_user_per_place),
+# pg_dump, then: pnpm db:migrate && pnpm db:generate     (db:migrate = migrate deploy, never resets)
+
+# Verify a café after a visit (until the admin UI exists)
+cd /srv/tinyhike/api
+pnpm places:verify list --category CAFE --unverified --name <text>   # find it: id, four points, OSM link
+pnpm places:verify verify <placeId> --step-free yes --stroller-room no --changing-table yes --toilets yes
+pnpm places:verify unverify <placeId>      # hides it again; the four answers stay (--by <email> on both if several ADMINs)
 
 # Moderate photos (until the admin UI exists). A PENDING photo's view URL is a 10-min signed link.
 cd /srv/tinyhike/api
@@ -286,8 +308,10 @@ pnpm photos:moderate reject <photoId> [note...]   # deletes the bytes; on an APP
 # Apply PostGIS triggers (only after a fresh migrate that touched Place or Route)
 sudo -u postgres psql -d tinyhike -f /srv/tinyhike/ops/scripts/postgis_setup.sql
 
-# Seed OSM POIs for Rotterdam
+# Seed OSM POIs for Rotterdam, then fill categories, tags and playground details
 cd /srv/tinyhike/api && pnpm seed:osm
+DRY_RUN=1 pnpm backfill:osm-tags && pnpm backfill:osm-tags        # category + tags, only where null
+DRY_RUN=1 pnpm backfill:playgrounds && pnpm backfill:playgrounds  # min/max age + equipment, only where unset
 
 # Run Claude enrichment on pending POIs
 cd /srv/tinyhike/api && pnpm enrich:pending
@@ -364,9 +388,11 @@ These are real bugs we hit. Reading this list saves 30 min each time.
 
 21. **Bucket CORS and lifecycle rules need an Admin token** — `PutBucketCors` and lifecycle configuration are bucket-level calls, refused (AccessDenied) to an "Object Read & Write" token. Don't widen the API's token to Admin so a script can set them. An always-on process holding an account-wide admin key can delete buckets or switch public access on, and a leaked `.env` would expose all of R2. Set CORS and lifecycle in the dashboard (`DEPLOY.md` §3c) and keep `R2_ACCESS_KEY_ID` at Object Read & Write on the two buckets.
 
-22. **The partial unique index on `Review` is invisible to Prisma** — `Review_one_written_per_user_per_place` (`… WHERE "userId" IS NOT NULL AND ("score" IS NOT NULL OR "comment" IS NOT NULL)`) is what enforces "one written review per parent per place". Prisma's schema language can't express a partial index, so it lives only in migration `20261023120000_photo_staging_and_review_dedupe`, and Prisma doesn't know it exists. `prisma migrate dev` may report it as drift and offer a reset, or generate a migration that drops it. **Never accept a reset** (it wipes the database). Read every generated `migration.sql` before applying it (`--create-only`), and delete any `DROP INDEX "Review_one_written_per_user_per_place"`: dropping it silently re-opens rating stuffing. The reviews route relies on it, retrying a concurrent duplicate insert (P2002) as an update. Same family as pitfall 5.
+22. **The partial unique index on `Review` is invisible to Prisma** — `Review_one_written_per_user_per_place` (`… WHERE "userId" IS NOT NULL AND ("score" IS NOT NULL OR "comment" IS NOT NULL)`) is what enforces "one written review per parent per place". Prisma's schema language can't express a partial index, so it lives only in migration `20261023120000_photo_staging_and_review_dedupe`, and Prisma doesn't know it exists. `prisma migrate dev` may report it as drift and offer a reset, or generate a migration that drops it. **Never accept a reset** (it wipes the database). Read every generated `migration.sql` before applying it (generate it offline with `prisma migrate diff`, see the commands above), and delete any `DROP INDEX "Review_one_written_per_user_per_place"`: dropping it silently re-opens rating stuffing. The reviews route relies on it, retrying a concurrent duplicate insert (P2002) as an update. Same family as pitfall 5.
 
 23. **TanStack Query v5 keeps the old data when a refetch fails** — if the `['me']` query threw on a 401, the cached user would stay on screen and every session gate would stay open. A parent whose session expired would keep seeing the review form until the post failed. `web/src/lib/session.ts` follows two rules. The query function resolves `null` for 401/404, because signed out is data, not an error. And whatever learns the session is gone calls `markSignedOut()`, which does `setQueryData(['me'], null)` at once. Invalidating `['me']` is not enough: the stale user stays until a refetch succeeds.
+
+24. **`NOT` over a nullable column skips the NULL rows** — Postgres logic is three-valued: for a place whose `category` is NULL, `category IN (…)` is unknown, and `NOT (unknown)` is still unknown, so the row matches neither a filter nor its negation. `{ NOT: publicPlaceWhere }` would silently miss every place with no category, exactly the hidden ones. Count hidden places by subtraction (total − public), as `GET /api/admin/stats` does, or test `category: null` explicitly. The JS side has the mirror trap: in a test fixture that lacks `verifiedAt`, `verifiedAt !== null` is true, so `isPublicPlace()` compares with `!= null` to stay closed on undefined.
 
 ---
 
