@@ -323,8 +323,14 @@ describe('place verification', () => {
       expect(result).toMatchObject({ created: false, place: { id: 'p-raced' } })
     })
 
+    it('a brunch restaurant needs no --category: OSM’s cuisine makes it a café', async () => {
+      await addPlaceFromOsm(asPrisma(db), JARMUSCH, { fetchElement: osm(jarmusch) })
+      expect(createArg().data).toMatchObject({ category: 'CAFE', hasCafe: true })
+    })
+
     it('asks for a category when OSM files the element under none of ours', async () => {
-      const err = await addPlaceFromOsm(asPrisma(db), JARMUSCH, { fetchElement: osm(jarmusch) }).catch((e: unknown) => e)
+      const italian = { ...jarmusch, tags: { ...jarmusch.tags, cuisine: 'italian' } }
+      const err = await addPlaceFromOsm(asPrisma(db), JARMUSCH, { fetchElement: osm(italian) }).catch((e: unknown) => e)
       expect(err).toBeInstanceOf(PlaceVerificationError)
       expect(err).toMatchObject({ code: 'NoCategory', statusCode: 400 })
       expect((err as Error).message).toContain('amenity=restaurant')

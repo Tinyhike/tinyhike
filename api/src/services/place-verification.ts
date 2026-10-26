@@ -286,10 +286,12 @@ async function findByOsmId(prisma: PrismaClient, osmId: string): Promise<Summary
  * Add one place from an OSM element, hidden until an admin verifies it (Jérôme,
  * 26 Oct 2026).
  *
- * The seeder only takes amenity=cafe, so a brunch place OSM files as
+ * The seeder took amenity=cafe only, so a brunch place OSM files as
  * amenity=restaurant + cuisine=breakfast (By Jarmusch West, node 11007237505)
- * never reached the database and could not be verified. This brings one in by
- * hand: its name, its position and the stroller tags OSM states (mapOsmTags),
+ * never reached the database and could not be verified. It now takes restaurants
+ * tagged with a brunch cuisine too (lib/osm.ts isBrunchRestaurant), but not one
+ * whose cuisine isn't tagged, or a café OSM files as something else. This brings
+ * one in by hand: its name, its position and the stroller tags OSM states (mapOsmTags),
  * under the category the admin gives, or the element's own. Only hidden
  * categories: nothing reaches the map before a visit. A missing playground, park
  * or picnic site is the seeder's job.

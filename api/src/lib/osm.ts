@@ -23,6 +23,27 @@ export interface OverpassElement {
 export const DEFAULT_BBOX = '51.8,4.4,51.95,4.6'
 
 /**
+ * Brunch and breakfast places OSM files as restaurants, imported as cafés:
+ * hidden until verified, like every café (Jérôme, 26 Oct 2026, the wide filter of
+ * docs/plan-cafes-non-verifies.md §10, pancake houses included). The seeder used
+ * to take amenity=cafe only, so By Jarmusch West (amenity=restaurant +
+ * cuisine=breakfast) was never imported. Measured in Rotterdam: 20 restaurants.
+ * A restaurant whose cuisine isn't tagged (De Brunch Club) still needs
+ * `pnpm places:verify add`.
+ */
+export const BRUNCH_CUISINES = ['breakfast', 'brunch', 'coffee_shop', 'pancake', 'lunch', 'lunchroom'] as const
+
+// One of the values of a `cuisine` list ("pancake;breakfast;lunch"). Plain spaces
+// rather than \s: Overpass regexes are POSIX, and the same pattern runs in both.
+const BRUNCH_CUISINE_PATTERN = `(^|;) *(${BRUNCH_CUISINES.join('|')}) *(;|$)`
+const BRUNCH_CUISINE = new RegExp(BRUNCH_CUISINE_PATTERN, 'i')
+
+/** An amenity=restaurant whose cuisine includes one of BRUNCH_CUISINES. */
+export function isBrunchRestaurant(tags: Record<string, string> | undefined): boolean {
+  return tags?.amenity === 'restaurant' && BRUNCH_CUISINE.test(tags.cuisine ?? '')
+}
+
+/**
  * `nwr` is node+way+relation. The original query asked for playgrounds only as
  * nodes and parks only as nodes-or-ways, which misses most of them: in OSM a
  * playground is normally drawn as an area. Sampled over Delfshaven, 10 of the 12
@@ -34,6 +55,7 @@ export const overpassQuery = (bbox: string) => `
 (
   nwr["leisure"~"^(park|playground)$"](${bbox});
   nwr["amenity"="cafe"](${bbox});
+  nwr["amenity"="restaurant"]["cuisine"~"${BRUNCH_CUISINE_PATTERN}",i](${bbox});
   nwr["tourism"="picnic_site"](${bbox});
 );
 out center tags;`
@@ -133,6 +155,8 @@ export function kindOf(tags: Record<string, string> | undefined): PlaceKind | nu
   if (tags.leisure === 'playground') return 'playground'
   if (tags.leisure === 'park') return 'park'
   if (tags.amenity === 'cafe') return 'cafe'
+  // A brunch or breakfast restaurant counts as a café: hidden until verified.
+  if (isBrunchRestaurant(tags)) return 'cafe'
   if (tags.tourism === 'picnic_site') return 'picnic_site'
   return null
 }
@@ -261,7 +285,9 @@ export function mapOsmTags(tags: Record<string, string> | undefined): StrollerTa
 
   if (tags.leisure === 'playground' || tags.playground) out.hasPlayground = true
 
-  if (tags.amenity === 'cafe') out.hasCafe = true
+  // A brunch restaurant is imported as a café, and every café row carries hasCafe
+  // (backfill:osm-tags checks the category and hasCafe agree).
+  if (tags.amenity === 'cafe' || isBrunchRestaurant(tags)) out.hasCafe = true
 
   if (tags.amenity === 'parking' || tags.parking) out.hasParking = true
 

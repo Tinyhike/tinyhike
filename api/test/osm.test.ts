@@ -9,6 +9,8 @@ import {
   translationsFor,
   kindOf,
   categoryOf,
+  isBrunchRestaurant,
+  BRUNCH_CUISINES,
   backfillUpdate,
   accessOf,
   kindForCategory,
@@ -23,6 +25,53 @@ describe('overpassQuery', () => {
     const q = overpassQuery('51.8,4.4,51.95,4.6')
     expect(q).toContain('nwr["leisure"~"^(park|playground)$"]')
     expect(q).toContain('out center tags') // areas need a representative point
+  })
+
+  it('takes the restaurants whose cuisine lists a brunch value, in the same pattern as isBrunchRestaurant', () => {
+    expect(overpassQuery('51.8,4.4,51.95,4.6')).toContain(
+      'nwr["amenity"="restaurant"]["cuisine"~"(^|;) *(breakfast|brunch|coffee_shop|pancake|lunch|lunchroom) *(;|$)",i](51.8,4.4,51.95,4.6);',
+    )
+  })
+})
+
+describe('isBrunchRestaurant (the wide filter, Jérôme 26 Oct 2026)', () => {
+  it('takes the six cuisines, pancake houses included', () => {
+    expect(BRUNCH_CUISINES).toEqual(['breakfast', 'brunch', 'coffee_shop', 'pancake', 'lunch', 'lunchroom'])
+  })
+
+  it.each([
+    'breakfast',
+    'pancake',
+    'lunchroom',
+    'Brunch',
+    'pancake;breakfast;lunch',
+    'french;italian;spanish;breakfast;diner;lunch',
+    'sandwich; coffee_shop',
+  ])('a restaurant with cuisine=%j is one', (cuisine) => {
+    expect(isBrunchRestaurant({ amenity: 'restaurant', cuisine })).toBe(true)
+  })
+
+  it.each(['italian', 'lunch_box', 'pancakes', 'breakfast_club', ''])('a restaurant with cuisine=%j is not', (cuisine) => {
+    expect(isBrunchRestaurant({ amenity: 'restaurant', cuisine })).toBe(false)
+  })
+
+  it('only restaurants: an ice-cream parlour or a fast-food with coffee_shop stays out', () => {
+    expect(isBrunchRestaurant({ amenity: 'ice_cream', cuisine: 'coffee_shop' })).toBe(false)
+    expect(isBrunchRestaurant({ amenity: 'fast_food', cuisine: 'coffee_shop' })).toBe(false)
+    expect(isBrunchRestaurant({ amenity: 'restaurant' })).toBe(false)
+    expect(isBrunchRestaurant(undefined)).toBe(false)
+  })
+
+  it('makes a café: hidden until verified, with hasCafe like every café', () => {
+    const tags = { amenity: 'restaurant', cuisine: 'pancake', name: 'Pannenkoe' }
+    expect(kindOf(tags)).toBe('cafe')
+    expect(categoryOf(tags)).toBe('CAFE')
+    expect(mapOsmTags(tags).hasCafe).toBe(true)
+    expect(mapOsmTags({ amenity: 'restaurant', cuisine: 'italian' }).hasCafe).toBeUndefined()
+  })
+
+  it('a playground mapped on a pancake house stays a playground', () => {
+    expect(categoryOf({ leisure: 'playground', amenity: 'restaurant', cuisine: 'pancake' })).toBe('PLAYGROUND')
   })
 })
 

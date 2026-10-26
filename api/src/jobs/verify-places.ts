@@ -15,9 +15,10 @@
  *         pnpm places:verify unverify <placeId> [--by <email>]
  *         pnpm places:verify add <node|way|relation>/<osmId> [--category CAFE]
  *
- * add brings in, hidden, a place the seeder never imported: it takes only
- * amenity=cafe, so a brunch place OSM files as a restaurant (By Jarmusch West,
- * node/11007237505) can't be verified until it is added. Name, position and the
+ * add brings in, hidden, a place the seeder never imported: a café OSM files
+ * under something else, or a brunch restaurant whose cuisine isn't tagged (the
+ * seeder takes amenity=cafe and, since 26 Oct 2026, restaurants tagged with a
+ * brunch cuisine, lib/osm.ts isBrunchRestaurant). Name, position and the
  * stroller tags come from OSM (api.openstreetmap.org). The OSM link pasted from
  * the browser works too. An element already in the database is shown, not
  * added twice. --category defaults to the element's own when it is a hidden one.
