@@ -10,9 +10,14 @@
  * deployed: a null category is hidden. Places whose OSM element is gone keep a null
  * category, so they stay hidden until an admin verifies them.
  *
- * Safe to re-run: it only writes fields that are currently null, so a value a user
- * (or Claude, or an admin's visit) has set is never overwritten. Nothing is
- * deleted, nothing is set to false unless OSM explicitly says so.
+ * It also keeps Place.access in step with OSM's access tag (26 Oct 2026): a
+ * private place is hidden unless verified, so this one is rewritten whenever OSM
+ * changes it, in either direction.
+ *
+ * Safe to re-run: apart from access, it only writes fields that are currently
+ * null, so a value a user (or Claude, or an admin's visit) has set is never
+ * overwritten. Nothing is deleted, nothing is set to false unless OSM explicitly
+ * says so.
  *
  * Usage:  pnpm backfill:osm-tags            (Rotterdam bbox)
  *         BBOX="…" pnpm backfill:osm-tags
@@ -24,6 +29,7 @@ import { PrismaClient } from '@prisma/client'
 import {
   fetchOverpass,
   backfillUpdate,
+  accessOf,
   categoryOf,
   osmIdFor,
   legacyOsmId,
@@ -59,6 +65,9 @@ async function backfill() {
   // Cross-check: hasCafe was set by the seeder from exactly amenity=cafe, so a
   // café without it (or the reverse) would point at a mapping bug.
   const mismatches: string[] = []
+  // Access of every matched place once this run is through, and the changes.
+  const access: Record<string, number> = {}
+  const accessChanges: string[] = []
   let updated = 0
   let unmatched = 0
 
@@ -76,6 +85,9 @@ async function backfill() {
     const data = backfillUpdate(tags, place)
     const category = place.category ?? data.category ?? null
     categories[category ?? 'null'] = (categories[category ?? 'null'] ?? 0) + 1
+    const accessKey = `${category ?? 'null'} ${accessOf(tags)}`
+    access[accessKey] = (access[accessKey] ?? 0) + 1
+    if (data.access) accessChanges.push(`${place.osmId} (${category ?? 'no category'}): ${place.access} → ${data.access}`)
     if ((categoryOf(tags) === 'CAFE') !== (place.hasCafe === true)) {
       mismatches.push(`${place.osmId} (category ${categoryOf(tags)}, hasCafe ${place.hasCafe})`)
     }
@@ -99,6 +111,11 @@ async function backfill() {
   for (const [key, count] of Object.entries(categories).sort((a, b) => b[1] - a[1])) {
     console.log(`  ${key.padEnd(22)} ${count}`)
   }
+  console.log(`\naccess ${dryRun ? 'after a real run' : 'now'} (matched places, by category):`)
+  for (const [key, count] of Object.entries(access).sort()) console.log(`  ${key.padEnd(22)} ${count}`)
+  console.log(`access changes: ${accessChanges.length}`)
+  for (const line of accessChanges) console.log(`  ${line}`)
+
   console.log(`\ncafé vs hasCafe mismatches: ${mismatches.length}`)
   for (const line of mismatches) console.log(`  ${line}`)
 

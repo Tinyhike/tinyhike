@@ -22,10 +22,11 @@
  * a brunch place OSM files as a restaurant can't be verified until it exists.
  */
 
-import { Prisma, PlaceCategory, type PrismaClient } from '@prisma/client'
+import { Prisma, PlaceCategory, type PlaceAccess, type PrismaClient } from '@prisma/client'
 import type { TagKey } from '../lib/tags.js'
 import { isPublicPlace, VISIBLE_CATEGORIES } from '../lib/place-visibility.js'
 import {
+  accessOf,
   categoryOf,
   DEFAULT_BBOX,
   elementCoords,
@@ -96,6 +97,7 @@ const SUMMARY_SELECT = {
   lng: true,
   status: true,
   category: true,
+  access: true,
   verifiedAt: true,
   wheelchairOk: true,
   isStrollerWide: true,
@@ -111,6 +113,8 @@ export interface VerificationSummary {
   id: string
   name: string | null
   category: PlaceCategory | null
+  /** From OSM's access tag: a PRIVATE place is hidden until verified. */
+  access: PlaceAccess
   status: SummaryRow['status']
   osmId: string | null
   lat: number
@@ -132,6 +136,7 @@ function toSummary(row: SummaryRow): VerificationSummary {
     id: row.id,
     name,
     category: row.category,
+    access: row.access,
     status: row.status,
     osmId: row.osmId,
     lat: row.lat,
@@ -154,6 +159,7 @@ function isMissingRow(err: unknown): boolean {
 export interface ListOptions {
   /** A category, or 'NONE' for places with no category. */
   category?: PlaceCategory | 'NONE'
+  access?: PlaceAccess
   verified?: boolean
   /** Case-insensitive match on any translated name. */
   name?: string
@@ -163,10 +169,11 @@ export interface ListOptions {
 /** Places to verify (or already verified), with how many match in total. */
 export async function listPlacesForVerification(
   prisma: PrismaClient,
-  { category, verified, name, take }: ListOptions,
+  { category, access, verified, name, take }: ListOptions,
 ): Promise<{ places: VerificationSummary[]; total: number }> {
   const where: Prisma.PlaceWhereInput = {
     ...(category === 'NONE' ? { category: null } : category ? { category } : {}),
+    ...(access ? { access } : {}),
     ...(verified === undefined ? {} : { verifiedAt: verified ? { not: null } : null }),
     ...(name ? { translations: { some: { name: { contains: name, mode: 'insensitive' } } } } : {}),
   }
@@ -289,6 +296,8 @@ async function findByOsmId(prisma: PrismaClient, osmId: string): Promise<Summary
  * Never a duplicate: an element already in the database (typed or legacy id) is
  * returned untouched. The element must lie inside `area` (the Rotterdam bbox by
  * default), which also catches a mistyped id that lands on a café elsewhere.
+ * That limit has to go with the European map (Jérôme, 26 Oct 2026): the area
+ * will be every city the map covers, or the typo guard will need another form.
  */
 export async function addPlaceFromOsm(
   prisma: PrismaClient,
@@ -347,6 +356,7 @@ export async function addPlaceFromOsm(
         // keeps it hidden until a visit (lib/place-visibility.ts).
         status: 'APPROVED',
         category: chosen,
+        access: accessOf(element.tags),
         ...mapOsmTags(element.tags),
         // Whatever OSM files it under, the admin says it is a café, and every café
         // row carries hasCafe (pnpm backfill:osm-tags checks the two agree).

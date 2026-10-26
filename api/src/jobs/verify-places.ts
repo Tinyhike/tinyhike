@@ -8,6 +8,7 @@
  * they tell parents which cafés to avoid.
  *
  * Usage:  pnpm places:verify list [--category CAFE|PLAYGROUND|PARK|PICNIC_SITE|NONE]
+ *                                  [--access OPEN|CUSTOMERS|PRIVATE]
  *                                  [--verified | --unverified] [--name <text>]
  *         pnpm places:verify verify <placeId> --step-free yes|no --stroller-room yes|no
  *                                  --changing-table yes|no --toilets yes|no [--by <email>]
@@ -32,7 +33,7 @@
 
 import 'dotenv/config'
 import { parseArgs } from 'node:util'
-import { PrismaClient, type PlaceCategory } from '@prisma/client'
+import { PrismaClient, PlaceAccess, type PlaceCategory } from '@prisma/client'
 import { DEFAULT_BBOX } from '../lib/osm.js'
 import { parseOsmRef } from '../lib/osm-api.js'
 import {
@@ -50,7 +51,7 @@ import {
 const prisma = new PrismaClient()
 
 const USAGE = `Usage:
-  pnpm places:verify list [--category CAFE|PLAYGROUND|PARK|PICNIC_SITE|NONE] [--verified | --unverified] [--name <text>]
+  pnpm places:verify list [--category CAFE|PLAYGROUND|PARK|PICNIC_SITE|NONE] [--access OPEN|CUSTOMERS|PRIVATE] [--verified | --unverified] [--name <text>]
   pnpm places:verify verify <placeId> --step-free yes|no --stroller-room yes|no --changing-table yes|no --toilets yes|no [--by <email>]
   pnpm places:verify unverify <placeId> [--by <email>]
   pnpm places:verify add <node|way|relation>/<osmId> [--category ${ADDABLE_CATEGORIES.join('|')}]`
@@ -71,7 +72,8 @@ const mark = (v: boolean | null) => (v === null ? '?' : v ? 'yes' : 'no')
 function print(p: VerificationSummary) {
   const state = p.verifiedAt ? `verified ${p.verifiedAt.toISOString().slice(0, 10)}` : 'not verified'
   console.log(`${p.id}  ${p.name ?? '(no name)'}`)
-  console.log(`  ${p.category ?? 'no category'}, ${p.status}, ${state}, ${p.visible ? 'ON the map' : 'hidden'}`)
+  const access = p.access === 'OPEN' ? '' : `, OSM access ${p.access.toLowerCase()}`
+  console.log(`  ${p.category ?? 'no category'}${access}, ${p.status}, ${state}, ${p.visible ? 'ON the map' : 'hidden'}`)
   console.log(
     `  step-free ${mark(p.points.stepFree)} · stroller room ${mark(p.points.strollerRoom)} · ` +
       `changing table ${mark(p.points.changingTable)} · toilets ${mark(p.points.toilets)}`,
@@ -84,6 +86,7 @@ async function list(args: string[]) {
     args,
     options: {
       category: { type: 'string' },
+      access: { type: 'string' },
       verified: { type: 'boolean' },
       unverified: { type: 'boolean' },
       name: { type: 'string' },
@@ -93,11 +96,16 @@ async function list(args: string[]) {
   if (category !== undefined && !(CATEGORIES as readonly string[]).includes(category)) {
     throw new UsageError(`Unknown category "${values.category}"`)
   }
+  const access = values.access?.toUpperCase()
+  if (access !== undefined && !(Object.values(PlaceAccess) as string[]).includes(access)) {
+    throw new UsageError(`Unknown access "${values.access}": ${Object.values(PlaceAccess).join('|')}`)
+  }
   if (values.verified && values.unverified) throw new UsageError('--verified or --unverified, not both')
   const verified = values.verified ? true : values.unverified ? false : undefined
 
   const { places, total } = await listPlacesForVerification(prisma, {
     category: category as PlaceCategory | 'NONE' | undefined,
+    access: access as PlaceAccess | undefined,
     verified,
     name: values.name?.trim() || undefined,
     take: 500,

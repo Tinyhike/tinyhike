@@ -65,7 +65,7 @@ describe('photo upload', () => {
     vi.mocked(r2.deleteObject).mockResolvedValue(undefined)
 
     prisma = makePrismaMock()
-    prisma.place.findUnique.mockResolvedValue({ status: 'APPROVED', category: 'PLAYGROUND', verifiedAt: null, submittedById: null })
+    prisma.place.findUnique.mockResolvedValue({ status: 'APPROVED', category: 'PLAYGROUND', access: 'OPEN', verifiedAt: null, submittedById: null })
     prisma.route.findUnique.mockResolvedValue({ status: 'APPROVED', authorId: null })
     app = await buildApp({ prisma: asPrisma(prisma), logger: false })
   })
@@ -290,7 +290,7 @@ describe('photo upload', () => {
         expect(res.json()).toEqual({ error: 'NotFound', message: 'Place not found' })
         expect(prisma.place.findUnique).toHaveBeenCalledWith({
           where: { id: PLACE },
-          select: { id: true, status: true, category: true, verifiedAt: true, submittedById: true },
+          select: { id: true, status: true, category: true, access: true, verifiedAt: true, submittedById: true },
         })
         expect(r2.copyObject).not.toHaveBeenCalled()
       },
@@ -301,6 +301,7 @@ describe('photo upload', () => {
         id: PLACE,
         status: 'APPROVED',
         category: 'CAFE',
+        access: 'OPEN',
         verifiedAt: null,
         submittedById: null,
       })
@@ -316,6 +317,7 @@ describe('photo upload', () => {
         id: PLACE,
         status: 'APPROVED',
         category: 'CAFE',
+        access: 'OPEN',
         verifiedAt: new Date(),
         submittedById: null,
       })

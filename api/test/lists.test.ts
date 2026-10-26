@@ -17,7 +17,7 @@ async function cookiesFor(sub: string, role = 'MEMBER') {
 }
 
 /** A playground: public. */
-const PUBLIC_PLACE = { id: 'p1', status: 'APPROVED', category: 'PLAYGROUND', verifiedAt: null, submittedById: null }
+const PUBLIC_PLACE = { id: 'p1', status: 'APPROVED', category: 'PLAYGROUND', access: 'OPEN', verifiedAt: null, submittedById: null }
 
 /** The shared mock plus the one model only these routes touch. */
 function makeMock() {
@@ -40,7 +40,7 @@ function listRow(over: Record<string, unknown> = {}) {
         note: null,
         position: 0,
         createdAt: new Date(),
-        place: { id: 'p1', status: 'APPROVED', category: 'PLAYGROUND', verifiedAt: null, submittedById: null, translations: [] },
+        place: { id: 'p1', status: 'APPROVED', category: 'PLAYGROUND', access: 'OPEN', verifiedAt: null, submittedById: null, translations: [] },
       },
       // Proposed by the list's owner, still awaiting moderation.
       {
@@ -48,7 +48,7 @@ function listRow(over: Record<string, unknown> = {}) {
         note: null,
         position: 1,
         createdAt: new Date(),
-        place: { id: 'p2', status: 'PENDING', category: null, verifiedAt: null, submittedById: 'u-owner', translations: [] },
+        place: { id: 'p2', status: 'PENDING', category: null, access: 'OPEN', verifiedAt: null, submittedById: 'u-owner', translations: [] },
       },
     ],
     ...over,
@@ -116,7 +116,7 @@ describe('lists', () => {
       note: null,
       position: 0,
       createdAt: new Date(),
-      place: { id, status: 'APPROVED', category: 'CAFE', verifiedAt, submittedById: null, translations: [] },
+      place: { id, status: 'APPROVED', category: 'CAFE', access: 'OPEN', verifiedAt, submittedById: null, translations: [] },
     })
 
     it('a verified café shows without its verification date', async () => {
@@ -155,7 +155,7 @@ describe('lists', () => {
           where: {
             place: {
               status: 'APPROVED',
-              OR: [{ category: { in: ['PLAYGROUND', 'PARK', 'PICNIC_SITE'] } }, { verifiedAt: { not: null } }],
+              OR: [{ category: { in: ['PLAYGROUND', 'PARK', 'PICNIC_SITE'] }, access: { in: ['OPEN', 'CUSTOMERS'] } }, { verifiedAt: { not: null } }],
             },
           },
         },
@@ -172,7 +172,7 @@ describe('lists', () => {
       OR: [
         {
           status: 'APPROVED',
-          OR: [{ category: { in: ['PLAYGROUND', 'PARK', 'PICNIC_SITE'] } }, { verifiedAt: { not: null } }],
+          OR: [{ category: { in: ['PLAYGROUND', 'PARK', 'PICNIC_SITE'] }, access: { in: ['OPEN', 'CUSTOMERS'] } }, { verifiedAt: { not: null } }],
         },
         { submittedById: 'u-owner' },
       ],

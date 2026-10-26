@@ -9,12 +9,20 @@
  *
  * The rule is an allowlist and fails closed: a null category, or one added to the
  * enum later, stays hidden until someone verifies the place.
+ *
+ * Second decision, same day: a place OSM marks access=private (21 playgrounds,
+ * one park) is hidden too, unless verified: if a parent reports one open, an
+ * admin checks and verifies it, and it comes back. access=customers stays on the
+ * map, with "customers only" on the sheet. Access is an allowlist as well.
  */
 
-import type { PlaceCategory, PlaceStatus, Prisma } from '@prisma/client'
+import type { PlaceAccess, PlaceCategory, PlaceStatus, Prisma } from '@prisma/client'
 import type { SessionPayload } from '../plugins/auth.js'
 
 export const VISIBLE_CATEGORIES = ['PLAYGROUND', 'PARK', 'PICNIC_SITE'] as const satisfies readonly PlaceCategory[]
+
+/** Access values the public may see without a verification: not PRIVATE. */
+export const VISIBLE_ACCESS = ['OPEN', 'CUSTOMERS'] as const satisfies readonly PlaceAccess[]
 
 /**
  * "Anyone may see this place", as a Prisma filter. Every public query starts from
@@ -22,7 +30,10 @@ export const VISIBLE_CATEGORIES = ['PLAYGROUND', 'PARK', 'PICNIC_SITE'] as const
  */
 export const publicPlaceWhere = {
   status: 'APPROVED',
-  OR: [{ category: { in: [...VISIBLE_CATEGORIES] } }, { verifiedAt: { not: null } }],
+  OR: [
+    { category: { in: [...VISIBLE_CATEGORIES] }, access: { in: [...VISIBLE_ACCESS] } },
+    { verifiedAt: { not: null } },
+  ],
 } satisfies Prisma.PlaceWhereInput
 
 /**
@@ -40,6 +51,7 @@ export const VISIBILITY_SELECT = {
   id: true,
   status: true,
   category: true,
+  access: true,
   verifiedAt: true,
   submittedById: true,
 } satisfies Prisma.PlaceSelect
@@ -47,6 +59,7 @@ export const VISIBILITY_SELECT = {
 export interface VisibilityFields {
   status: PlaceStatus
   category: PlaceCategory | null
+  access: PlaceAccess
   verifiedAt: Date | null
   submittedById: string | null
 }
@@ -55,7 +68,12 @@ export function isPublicPlace(place: Omit<VisibilityFields, 'submittedById'>): b
   if (place.status !== 'APPROVED') return false
   // Loose `!=`: a row that didn't load verifiedAt (undefined) is not verified.
   if (place.verifiedAt != null) return true
-  return place.category != null && (VISIBLE_CATEGORIES as readonly PlaceCategory[]).includes(place.category)
+  return (
+    place.category != null &&
+    (VISIBLE_CATEGORIES as readonly PlaceCategory[]).includes(place.category) &&
+    // A row that didn't load access (undefined) is not shown: fail closed.
+    (VISIBLE_ACCESS as readonly PlaceAccess[]).includes(place.access)
+  )
 }
 
 /**

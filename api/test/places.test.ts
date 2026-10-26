@@ -25,6 +25,7 @@ function placeRow(over: Record<string, unknown> = {}) {
     id: 'p1',
     status: 'APPROVED',
     category: 'PLAYGROUND',
+    access: 'OPEN',
     verifiedAt: null,
     verifiedById: null,
     submittedById: 'u-submitter',
@@ -148,6 +149,8 @@ describe('GET /api/places', () => {
       minAge: true,
       maxAge: true,
       playEquipment: true,
+      // the sheet says "customers only"; every pin on the map may be entered
+      access: true,
     })
     expect(arg.include.photos).toEqual({ where: { status: 'APPROVED' }, take: 1, select: { id: true, r2Url: true } })
   })
@@ -324,6 +327,7 @@ describe('GET /api/places/:id/reviews', () => {
       id: 'p1',
       status: 'APPROVED',
       category: 'PLAYGROUND',
+      access: 'OPEN',
       verifiedAt: null,
       submittedById: null,
     })
@@ -477,7 +481,7 @@ describe('GET /api/places/:id/my-review', () => {
 
 const PUBLIC_WHERE = {
   status: 'APPROVED',
-  OR: [{ category: { in: ['PLAYGROUND', 'PARK', 'PICNIC_SITE'] } }, { verifiedAt: { not: null } }],
+  OR: [{ category: { in: ['PLAYGROUND', 'PARK', 'PICNIC_SITE'] }, access: { in: ['OPEN', 'CUSTOMERS'] } }, { verifiedAt: { not: null } }],
 }
 
 describe('unverified cafés are hidden (decision of 26 Oct 2026)', () => {
@@ -563,7 +567,7 @@ describe('unverified cafés are hidden (decision of 26 Oct 2026)', () => {
   })
 
   it('GET /api/places/:id/reviews is 404 on an unverified café', async () => {
-    prisma.place.findUnique.mockResolvedValueOnce({ id: 'p1', status: 'APPROVED', category: 'CAFE', verifiedAt: null, submittedById: null })
+    prisma.place.findUnique.mockResolvedValueOnce({ id: 'p1', status: 'APPROVED', category: 'CAFE', access: 'OPEN', verifiedAt: null, submittedById: null })
     const res = await app.inject({ method: 'GET', url: '/api/places/p1/reviews' })
     expect(res.statusCode).toBe(404)
     expect(prisma.review.findMany).not.toHaveBeenCalled()
@@ -573,7 +577,7 @@ describe('unverified cafés are hidden (decision of 26 Oct 2026)', () => {
     ['a tag vote', { tagsConfirmed: ['hasToilets'] }],
     ['a rating', { score: 4 }],
   ])('POST /api/places/:id/reviews refuses %s on an unverified café', async (_label, payload) => {
-    prisma.place.findUnique.mockResolvedValueOnce({ id: 'p1', status: 'APPROVED', category: 'CAFE', verifiedAt: null, submittedById: null })
+    prisma.place.findUnique.mockResolvedValueOnce({ id: 'p1', status: 'APPROVED', category: 'CAFE', access: 'OPEN', verifiedAt: null, submittedById: null })
     const res = await app.inject({
       method: 'POST',
       url: '/api/places/p1/reviews',
@@ -590,7 +594,7 @@ describe('unverified cafés are hidden (decision of 26 Oct 2026)', () => {
     await app.inject({ method: 'GET', url: '/api/places/p1/reviews' })
     expect(prisma.place.findUnique).toHaveBeenCalledWith({
       where: { id: 'p1' },
-      select: { id: true, status: true, category: true, verifiedAt: true, submittedById: true },
+      select: { id: true, status: true, category: true, access: true, verifiedAt: true, submittedById: true },
     })
   })
 })

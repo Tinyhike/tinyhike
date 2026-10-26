@@ -10,6 +10,7 @@ import {
   kindOf,
   categoryOf,
   backfillUpdate,
+  accessOf,
   kindForCategory,
   insideBbox,
   DEFAULT_BBOX,
@@ -189,7 +190,7 @@ describe('categoryOf', () => {
 })
 
 describe('backfillUpdate', () => {
-  const blank = { category: null, hasToilets: null, hasCafe: null }
+  const blank = { category: null, access: 'OPEN' as const, hasToilets: null, hasCafe: null }
 
   it('fills a missing category along with the missing tags', () => {
     expect(backfillUpdate({ amenity: 'cafe', toilets: 'yes' }, blank)).toEqual({
@@ -208,9 +209,41 @@ describe('backfillUpdate', () => {
   })
 
   it('never overwrites a tag an admin recorded on a visit', () => {
-    expect(backfillUpdate({ amenity: 'cafe', toilets: 'yes' }, { category: 'CAFE', hasToilets: false, hasCafe: true })).toEqual(
-      {},
-    )
+    expect(
+      backfillUpdate({ amenity: 'cafe', toilets: 'yes' }, { category: 'CAFE', access: 'OPEN', hasToilets: false, hasCafe: true }),
+    ).toEqual({})
+  })
+
+  it('keeps access in step with OSM, both ways: no person sets it', () => {
+    const playground = { ...blank, category: 'PLAYGROUND' as const, hasPlayground: true }
+    expect(backfillUpdate({ leisure: 'playground', access: 'private' }, playground)).toEqual({ access: 'PRIVATE' })
+    expect(backfillUpdate({ leisure: 'playground' }, { ...playground, access: 'PRIVATE' })).toEqual({ access: 'OPEN' })
+    expect(backfillUpdate({ leisure: 'playground', access: 'customers' }, { ...playground, access: 'PRIVATE' })).toEqual({
+      access: 'CUSTOMERS',
+    })
+    expect(backfillUpdate({ leisure: 'playground', access: 'private' }, { ...playground, access: 'PRIVATE' })).toEqual({})
+  })
+})
+
+describe('accessOf', () => {
+  it.each([
+    ['private', 'PRIVATE'],
+    ['no', 'PRIVATE'],
+    [' Private ', 'PRIVATE'],
+    ['customers', 'CUSTOMERS'],
+    ['yes', 'OPEN'],
+    ['permissive', 'OPEN'],
+    ['permit', 'OPEN'],
+    ['destination', 'OPEN'],
+    ['public2', 'OPEN'],
+    ['', 'OPEN'],
+  ])('access=%j → %s', (value, access) => {
+    expect(accessOf({ leisure: 'playground', access: value })).toBe(access)
+  })
+
+  it('an element with no access tag is open: absence is not a restriction', () => {
+    expect(accessOf({ leisure: 'playground' })).toBe('OPEN')
+    expect(accessOf(undefined)).toBe('OPEN')
   })
 })
 

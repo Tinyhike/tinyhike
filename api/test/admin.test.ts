@@ -51,6 +51,7 @@ function cafeRow(over: Record<string, unknown> = {}) {
     lng: 4.48,
     status: 'APPROVED',
     category: 'CAFE',
+    access: 'OPEN',
     verifiedAt: null,
     wheelchairOk: null,
     isStrollerWide: null,
@@ -418,7 +419,7 @@ describe('admin routes', () => {
       expect(db.place.count).toHaveBeenNthCalledWith(2, {
         where: {
           status: 'APPROVED',
-          OR: [{ category: { in: ['PLAYGROUND', 'PARK', 'PICNIC_SITE'] } }, { verifiedAt: { not: null } }],
+          OR: [{ category: { in: ['PLAYGROUND', 'PARK', 'PICNIC_SITE'] }, access: { in: ['OPEN', 'CUSTOMERS'] } }, { verifiedAt: { not: null } }],
         },
       })
     })
@@ -438,6 +439,7 @@ describe('admin routes', () => {
             id: PLACE,
             name: 'Koffie & Co',
             category: 'CAFE',
+            access: 'OPEN',
             status: 'APPROVED',
             osmId: 'osm:node/42',
             lat: 51.92,
@@ -452,6 +454,12 @@ describe('admin routes', () => {
       expect(arg.where).toEqual({ category: 'CAFE', verifiedAt: null })
       expect(arg.take).toBe(100)
       expect(arg.select).not.toHaveProperty('verifiedById')
+    })
+
+    it('filters on OSM access', async () => {
+      await request('GET', '/api/admin/places?category=PLAYGROUND&access=PRIVATE')
+      expect((db.place.findMany.mock.calls[0][0] as { where: unknown }).where).toEqual({ category: 'PLAYGROUND', access: 'PRIVATE' })
+      expect((await request('GET', '/api/admin/places?access=MEMBERS')).statusCode).toBe(400)
     })
 
     it('filters on verified places, places with no category, and names', async () => {

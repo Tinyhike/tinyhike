@@ -33,6 +33,8 @@ const PlaceModerationSchema = z
 
 const PlaceListQuery = z.object({
   category: z.enum([...CATEGORIES, 'NONE']).optional(),
+  // OSM's access tag: ?access=PRIVATE lists the places hidden for it.
+  access: z.enum(['OPEN', 'CUSTOMERS', 'PRIVATE']).optional(),
   verified: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')

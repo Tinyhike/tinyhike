@@ -106,6 +106,13 @@ model Place {
   verifiedById String?
   verifiedBy   User?     @relation("verifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
 
+  // Who may go in, from OSM's `access` tag (lib/osm.ts accessOf). It mirrors
+  // OSM: pnpm backfill:osm-tags updates it whenever OSM changes, since no person
+  // sets it. PRIVATE (access=private or no) is hidden unless an admin verifies the
+  // place, e.g. after a parent reports it open (lib/place-visibility.ts, Jérôme,
+  // 26 Oct 2026). CUSTOMERS stays visible, with "customers only" on the sheet.
+  access PlaceAccess @default(OPEN)
+
   // Playground details imported from OSM (jobs/backfill-playground-details.ts):
   // the playground's own min_age / max_age, and the kinds of play equipment mapped
   // inside it (`playground=*`: swing, slide, sandpit…). null / empty = OSM says
@@ -130,6 +137,14 @@ enum PlaceStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+/// From OSM's access tag. OPEN = no restriction stated (no tag, or yes,
+/// permissive, permit, destination…).
+enum PlaceAccess {
+  OPEN
+  CUSTOMERS
+  PRIVATE
 }
 
 enum PlaceCategory {

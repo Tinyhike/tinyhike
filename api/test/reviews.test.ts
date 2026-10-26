@@ -50,6 +50,7 @@ describe('POST /api/places/:id/reviews', () => {
       id: 'p1',
       status: 'APPROVED',
       category: 'PLAYGROUND',
+      access: 'OPEN',
       verifiedAt: null,
       submittedById: null,
     })

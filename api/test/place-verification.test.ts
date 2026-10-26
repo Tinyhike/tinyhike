@@ -25,6 +25,7 @@ function row(over: Record<string, unknown> = {}) {
     lng: 4.4,
     status: 'APPROVED',
     category: 'CAFE',
+    access: 'OPEN',
     verifiedAt: null,
     wheelchairOk: null,
     isStrollerWide: null,
@@ -179,6 +180,13 @@ describe('place verification', () => {
       expect(db.place.count).toHaveBeenCalledWith({ where: listWhere })
     })
 
+    it('filters on OSM access, to find the private playgrounds', async () => {
+      db.place.findMany.mockResolvedValueOnce([row({ category: 'PLAYGROUND', access: 'PRIVATE' })])
+      const { places } = await listPlacesForVerification(asPrisma(db), { category: 'PLAYGROUND', access: 'PRIVATE', take: 10 })
+      expect((db.place.findMany.mock.calls[0][0] as { where: unknown }).where).toEqual({ category: 'PLAYGROUND', access: 'PRIVATE' })
+      expect(places[0]).toMatchObject({ access: 'PRIVATE', visible: false })
+    })
+
     it('with no filter, lists everything', async () => {
       await listPlacesForVerification(asPrisma(db), { take: 10 })
       expect((db.place.findMany.mock.calls[0][0] as { where: unknown }).where).toEqual({})
@@ -225,6 +233,7 @@ describe('place verification', () => {
         source: 'OSM',
         status: 'APPROVED',
         category: 'CAFE',
+        access: 'OPEN',
         hasCafe: true,
         translations: { create: [{ locale: 'nl', name: 'By Jarmusch West' }] },
       })
@@ -239,6 +248,12 @@ describe('place verification', () => {
       expect(createArg().data).toMatchObject({ wheelchairOk: true, hasChangingTable: true, hasOutdoorSeating: false })
       expect(createArg().data).not.toHaveProperty('hasToilets')
       expect(createArg().data).not.toHaveProperty('isStrollerWide')
+    })
+
+    it('records OSM’s access tag', async () => {
+      const customersOnly = { ...jarmusch, tags: { ...jarmusch.tags, access: 'customers' } }
+      await addPlaceFromOsm(asPrisma(db), JARMUSCH, { category: 'CAFE', fetchElement: osm(customersOnly) })
+      expect(createArg().data).toMatchObject({ access: 'CUSTOMERS' })
     })
 
     it('takes an amenity=cafe element’s own category when none is given', async () => {

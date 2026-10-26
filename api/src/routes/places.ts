@@ -97,7 +97,13 @@ const REVIEW_ORDER = [{ createdAt: 'desc' }, { id: 'desc' }] satisfies Prisma.Re
  * Detail-only columns, left out of the map list: the sheet loads them with the
  * detail, and every map pan would otherwise carry them for up to 500 pins.
  */
-const DETAIL_ONLY_OMIT = { minAge: true, maxAge: true, playEquipment: true } as const satisfies Prisma.PlaceOmit
+const DETAIL_ONLY_OMIT = {
+  minAge: true,
+  maxAge: true,
+  playEquipment: true,
+  // Every place on the map is OPEN or CUSTOMERS (or verified); only the sheet says "customers only".
+  access: true,
+} as const satisfies Prisma.PlaceOmit
 
 const NOT_FOUND = { error: 'NotFound', message: 'Place not found' } as const
 

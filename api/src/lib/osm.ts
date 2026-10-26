@@ -6,7 +6,7 @@
  * (existing ones), so the query and the mapping can't drift apart between them.
  */
 
-import type { PlaceCategory } from '@prisma/client'
+import type { PlaceAccess, PlaceCategory } from '@prisma/client'
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
 
@@ -154,6 +154,20 @@ export function categoryOf(tags: Record<string, string> | undefined): PlaceCateg
   return kind ? CATEGORY_FOR[kind] : null
 }
 
+/**
+ * Who may go in, from OSM's `access` tag (Jérôme, 26 Oct 2026). `private` and `no`
+ * close the place to the public: it is hidden unless an admin verifies it
+ * (lib/place-visibility.ts). `customers` keeps it on the map with a mention on the
+ * sheet. Anything else, the tag's absence included, is OPEN: `yes`, `permissive`,
+ * `permit` (the Donckse Bos), `destination`, and typos such as `public2`.
+ */
+export function accessOf(tags: Record<string, string> | undefined): PlaceAccess {
+  const access = tags?.access?.trim().toLowerCase()
+  if (access === 'private' || access === 'no') return 'PRIVATE'
+  if (access === 'customers') return 'CUSTOMERS'
+  return 'OPEN'
+}
+
 /** The kind whose generic name a place of this category takes when OSM gives it none. */
 export function kindForCategory(category: PlaceCategory): PlaceKind | null {
   return (Object.keys(CATEGORY_FOR) as PlaceKind[]).find((kind) => CATEGORY_FOR[kind] === category) ?? null
@@ -292,13 +306,19 @@ export function onlyMissing<T extends Record<string, unknown>>(mapped: StrollerT
  * What the backfill writes to one place: the stroller tags it is missing, plus its
  * category when it has none. Like the tags, a category already set is never
  * replaced, and an element that matches no category leaves it null.
+ *
+ * `access` is the exception: it mirrors OSM, so it is written whenever OSM says
+ * something else. No person sets it (an admin who finds a private place open
+ * verifies it instead), and a playground OSM opens again must come back.
  */
 export function backfillUpdate(
   tags: Record<string, string> | undefined,
-  place: Record<string, unknown> & { category: PlaceCategory | null },
-): StrollerTags & { category?: PlaceCategory } {
-  const data: StrollerTags & { category?: PlaceCategory } = onlyMissing(mapOsmTags(tags), place)
+  place: Record<string, unknown> & { category: PlaceCategory | null; access: PlaceAccess },
+): StrollerTags & { category?: PlaceCategory; access?: PlaceAccess } {
+  const data: StrollerTags & { category?: PlaceCategory; access?: PlaceAccess } = onlyMissing(mapOsmTags(tags), place)
   const category = categoryOf(tags)
   if (place.category === null && category) data.category = category
+  const access = accessOf(tags)
+  if (place.access !== access) data.access = access
   return data
 }
