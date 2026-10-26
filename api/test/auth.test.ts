@@ -15,7 +15,7 @@ vi.mock('resend', () => ({
 }))
 
 import { buildApp } from '../src/app.js'
-import { NEXT_PATH } from '../src/routes/auth.js'
+import { NEXT_PATH, emailDelivery } from '../src/routes/auth.js'
 import { SESSION_COOKIE, signSession } from '../src/plugins/auth.js'
 import { makePrismaMock, asPrisma } from './helpers.js'
 
@@ -394,5 +394,62 @@ describe('GET /api/auth/me', () => {
     const res = await app.inject({ method: 'GET', url: '/api/auth/me', cookies: await signedIn() })
     expect(res.statusCode).toBe(404)
     expect(res.json()).toEqual({ error: 'NotFound', message: 'User not found' })
+  })
+})
+
+describe('EMAIL_DELIVERY: sign-in links in the dev log', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it.each([
+    [{}, 'resend'],
+    [{ EMAIL_DELIVERY: 'resend', NODE_ENV: 'production' }, 'resend'],
+    [{ EMAIL_DELIVERY: 'log', NODE_ENV: 'development' }, 'log'],
+    [{ EMAIL_DELIVERY: 'log' }, 'log'],
+  ])('%j → %s', (env, mode) => {
+    expect(emailDelivery(env)).toBe(mode)
+  })
+
+  it('refuses the log in production: the journal would hold working sign-in links', () => {
+    expect(() => emailDelivery({ EMAIL_DELIVERY: 'log', NODE_ENV: 'production' })).toThrow(/refused when NODE_ENV=production/)
+  })
+
+  it('refuses an unknown mode rather than fall back to one', () => {
+    expect(() => emailDelivery({ EMAIL_DELIVERY: 'smtp' })).toThrow(/must be "resend" or "log"/)
+  })
+
+  it('the API does not start in production with the log mode', async () => {
+    vi.stubEnv('EMAIL_DELIVERY', 'log')
+    vi.stubEnv('NODE_ENV', 'production')
+    await expect(buildApp({ prisma: asPrisma(makePrismaMock()), logger: false })).rejects.toThrow(/EMAIL_DELIVERY=log is refused/)
+  })
+
+  it('writes the link to the log instead of sending it', async () => {
+    vi.stubEnv('EMAIL_DELIVERY', 'log')
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('PUBLIC_BASE_URL', 'http://localhost:5173')
+    send.mockReset()
+    const lines: string[] = []
+    const prisma = makeAuthMock()
+    const app = await buildApp({
+      prisma: asPrisma(prisma),
+      logger: { level: 'info', stream: { write: (line: string) => void lines.push(line) } },
+    })
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/auth/magic',
+        payload: { email: 'parent@example.nl', next: '/profile' },
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toEqual({ ok: true })
+      expect(send).not.toHaveBeenCalled()
+
+      const { token } = (prisma.magicToken.create.mock.calls[0][0] as { data: { token: string } }).data
+      const entry = lines.map((line) => JSON.parse(line) as { link?: string; to?: string }).find((e) => e.link)
+      expect(entry?.link).toBe(`http://localhost:5173/api/auth/verify?token=${token}&next=%2Fprofile`)
+      expect(entry?.to).toBe('parent@example.nl')
+    } finally {
+      await app.close()
+    }
   })
 })

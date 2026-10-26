@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import Fastify, { FastifyError, FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
+import Fastify, { FastifyError, FastifyInstance, FastifyRequest, FastifyReply, type FastifyServerOptions } from 'fastify'
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
@@ -24,8 +24,8 @@ declare module 'fastify' {
 export interface BuildAppOptions {
   /** Inject a Prisma client (e.g. a mock in tests). If omitted, a real one is created. */
   prisma?: PrismaClient
-  /** Fastify logger. Defaults to true; tests pass false to keep output quiet. */
-  logger?: boolean
+  /** Fastify logger. Defaults to true; tests pass false to keep output quiet, or a stream to read it. */
+  logger?: FastifyServerOptions['logger']
 }
 
 /**

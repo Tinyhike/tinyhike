@@ -5,8 +5,23 @@ import crypto from 'crypto'
 import { z } from 'zod'
 import { signSession, requireAuth, SESSION_COOKIE, SESSION_COOKIE_OPTIONS } from '../plugins/auth.js'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const MAGIC_TTL_MIN = 15
+
+/**
+ * Where sign-in links go. Production sends them with Resend. The dev checkout
+ * sets EMAIL_DELIVERY=log (DEPLOY.md, "Dev environment"): the link is written to
+ * the log instead, so dev holds no Resend key and never mails anyone. Refused
+ * under NODE_ENV=production, where it would hand whoever reads the journal a way
+ * to sign in as anyone. An unknown value is an error, not a silent fallback.
+ */
+export function emailDelivery(env: NodeJS.ProcessEnv = process.env): 'resend' | 'log' {
+  const value = env.EMAIL_DELIVERY ?? 'resend'
+  if (value !== 'resend' && value !== 'log') throw new Error(`EMAIL_DELIVERY must be "resend" or "log", not "${value}"`)
+  if (value === 'log' && env.NODE_ENV === 'production') {
+    throw new Error('EMAIL_DELIVERY=log is refused when NODE_ENV=production: sign-in links would land in the journal')
+  }
+  return value
+}
 
 /**
  * Where a magic link may send the parent after sign-in: an allowlist of in-app
@@ -86,6 +101,9 @@ async function findOrCreateUser(
 }
 
 export default async function authRoutes(app: FastifyInstance) {
+  // Checked when the app is built, so a bad setting stops the API at start.
+  const resend = emailDelivery() === 'resend' ? new Resend(process.env.RESEND_API_KEY) : null
+
   // POST /api/auth/magic — send magic link
   // Strict limit: prevents email enumeration and Resend abuse.
   app.post(
@@ -120,6 +138,13 @@ export default async function authRoutes(app: FastifyInstance) {
     const link =
       `${process.env.PUBLIC_BASE_URL}/api/auth/verify?token=${token}` +
       (next ? `&next=${encodeURIComponent(next)}` : '')
+
+    if (!resend) {
+      // Dev only: emailDelivery() refuses this mode in production.
+      req.log.info({ to: email, link }, 'magic link written to the log (EMAIL_DELIVERY=log), not sent')
+      return { ok: true }
+    }
+
     // The Resend SDK does NOT reject on API errors — it resolves with
     // { data: null, error: {...} }. Awaiting it without inspecting the result
     // reports success for every failed send: unverified domain, bad key, rejected
