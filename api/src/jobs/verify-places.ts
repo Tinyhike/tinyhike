@@ -12,6 +12,14 @@
  *         pnpm places:verify verify <placeId> --step-free yes|no --stroller-room yes|no
  *                                  --changing-table yes|no --toilets yes|no [--by <email>]
  *         pnpm places:verify unverify <placeId> [--by <email>]
+ *         pnpm places:verify add <node|way|relation>/<osmId> [--category CAFE]
+ *
+ * add brings in, hidden, a place the seeder never imported: it takes only
+ * amenity=cafe, so a brunch place OSM files as a restaurant (By Jarmusch West,
+ * node/11007237505) can't be verified until it is added. Name, position and the
+ * stroller tags come from OSM (api.openstreetmap.org). The OSM link pasted from
+ * the browser works too. An element already in the database is shown, not
+ * added twice. --category defaults to the element's own when it is a hidden one.
  *
  * The four points: step-free = "entrée praticable en poussette"; stroller-room =
  * "place pour la poussette à l'intérieur"; changing-table = "table à langer";
@@ -25,7 +33,11 @@
 import 'dotenv/config'
 import { parseArgs } from 'node:util'
 import { PrismaClient, type PlaceCategory } from '@prisma/client'
+import { DEFAULT_BBOX } from '../lib/osm.js'
+import { parseOsmRef } from '../lib/osm-api.js'
 import {
+  addPlaceFromOsm,
+  ADDABLE_CATEGORIES,
   listPlacesForVerification,
   verifyPlace,
   unverifyPlace,
@@ -40,7 +52,8 @@ const prisma = new PrismaClient()
 const USAGE = `Usage:
   pnpm places:verify list [--category CAFE|PLAYGROUND|PARK|PICNIC_SITE|NONE] [--verified | --unverified] [--name <text>]
   pnpm places:verify verify <placeId> --step-free yes|no --stroller-room yes|no --changing-table yes|no --toilets yes|no [--by <email>]
-  pnpm places:verify unverify <placeId> [--by <email>]`
+  pnpm places:verify unverify <placeId> [--by <email>]
+  pnpm places:verify add <node|way|relation>/<osmId> [--category ${ADDABLE_CATEGORIES.join('|')}]`
 
 const CATEGORIES = ['PLAYGROUND', 'PARK', 'PICNIC_SITE', 'CAFE', 'NONE'] as const
 
@@ -150,6 +163,33 @@ async function unverify(id: string | undefined, args: string[]) {
   print(result)
 }
 
+async function add(input: string | undefined, args: string[]) {
+  if (!input || input.startsWith('--')) throw new UsageError('add needs an OSM element, e.g. node/11007237505')
+  const ref = parseOsmRef(input)
+  if (!ref) {
+    throw new UsageError(`"${input}" names no OSM element: write node/<id>, way/<id> or relation/<id>, or paste its openstreetmap.org link`)
+  }
+  const { values } = parseArgs({ args, options: { category: { type: 'string' } } })
+  const category = values.category?.toUpperCase()
+  if (category !== undefined && !(ADDABLE_CATEGORIES as string[]).includes(category)) {
+    throw new UsageError(`add only creates hidden places: --category ${ADDABLE_CATEGORIES.join('|')}, not "${values.category}"`)
+  }
+
+  const { created, place } = await addPlaceFromOsm(prisma, ref, {
+    category: category as PlaceCategory | undefined,
+    // Same area as the seeder.
+    area: process.env.BBOX ?? DEFAULT_BBOX,
+  })
+  console.log(created ? 'Added, hidden until verified:' : 'Already in the database, nothing added:')
+  print(place)
+  if (!place.verifiedAt) {
+    console.log(
+      `\nAfter the visit:\n  pnpm places:verify verify ${place.id} ` +
+        '--step-free yes|no --stroller-room yes|no --changing-table yes|no --toilets yes|no',
+    )
+  }
+}
+
 async function main() {
   const argv = process.argv.slice(2)
   // `pnpm places:verify -- verify …` (the npm habit) passes the `--` through.
@@ -162,6 +202,8 @@ async function main() {
       return verify(rest[0], rest.slice(1))
     case 'unverify':
       return unverify(rest[0], rest.slice(1))
+    case 'add':
+      return add(rest[0], rest.slice(1))
     default:
       throw new UsageError(command ? `Unknown command "${command}"` : 'No command given')
   }

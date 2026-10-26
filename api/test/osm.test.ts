@@ -10,6 +10,9 @@ import {
   kindOf,
   categoryOf,
   backfillUpdate,
+  kindForCategory,
+  insideBbox,
+  DEFAULT_BBOX,
 } from '../src/lib/osm.js'
 
 describe('overpassQuery', () => {
@@ -228,5 +231,28 @@ describe('onlyMissing', () => {
       { smooth: null, hasToilets: true, wheelchairOk: null },
     )
     expect(result).toEqual({ smooth: true, wheelchairOk: false })
+  })
+})
+
+describe('kindForCategory', () => {
+  it('gives each category the kind whose generic name it takes', () => {
+    expect(kindForCategory('CAFE')).toBe('cafe')
+    expect(kindForCategory('PLAYGROUND')).toBe('playground')
+    expect(kindForCategory('PARK')).toBe('park')
+    expect(kindForCategory('PICNIC_SITE')).toBe('picnic_site')
+  })
+})
+
+describe('insideBbox', () => {
+  it('reads the bbox in Overpass order, south,west,north,east', () => {
+    expect(insideBbox({ lat: 51.9101778, lng: 4.4500768 }, DEFAULT_BBOX)).toBe(true) // By Jarmusch West
+    expect(insideBbox({ lat: 48.8566, lng: 2.3522 }, DEFAULT_BBOX)).toBe(false)
+    expect(insideBbox({ lat: 51.9, lng: 4.7 }, DEFAULT_BBOX)).toBe(false) // east of Rotterdam
+    expect(insideBbox({ lat: 4.5, lng: 51.9 }, DEFAULT_BBOX)).toBe(false) // lat and lng swapped
+  })
+
+  it('includes the edges', () => {
+    expect(insideBbox({ lat: 51.8, lng: 4.4 }, DEFAULT_BBOX)).toBe(true)
+    expect(insideBbox({ lat: 51.95, lng: 4.6 }, DEFAULT_BBOX)).toBe(true)
   })
 })

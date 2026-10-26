@@ -17,11 +17,28 @@
  * Shared by the CLI (jobs/verify-places.ts, `pnpm places:verify`) and the admin
  * routes (PUT/DELETE /api/admin/places/:id/verification), the same way
  * photo-moderation.ts is shared, so both write the same columns.
+ *
+ * It also adds, hidden, a place the seeder missed (addPlaceFromOsm, CLI only):
+ * a brunch place OSM files as a restaurant can't be verified until it exists.
  */
 
-import { Prisma, type PlaceCategory, type PrismaClient } from '@prisma/client'
+import { Prisma, PlaceCategory, type PrismaClient } from '@prisma/client'
 import type { TagKey } from '../lib/tags.js'
-import { isPublicPlace } from '../lib/place-visibility.js'
+import { isPublicPlace, VISIBLE_CATEGORIES } from '../lib/place-visibility.js'
+import {
+  categoryOf,
+  DEFAULT_BBOX,
+  elementCoords,
+  insideBbox,
+  isSameFeature,
+  kindForCategory,
+  legacyOsmId,
+  mapOsmTags,
+  osmIdFor,
+  translationsFor,
+  type OverpassElement,
+} from '../lib/osm.js'
+import { fetchOsmElement, type OsmRef } from '../lib/osm-api.js'
 
 export const VERIFICATION_POINTS = {
   // "Entrée praticable en poussette": the step-free tag ("Sans marche", "Step-free").
@@ -39,12 +56,25 @@ export type VerificationAnswers = Record<VerificationPoint, boolean>
 
 export const VERIFICATION_POINT_KEYS = Object.keys(VERIFICATION_POINTS) as VerificationPoint[]
 
-export type PlaceVerificationErrorCode = 'NotFound' | 'NotAdmin'
+export type PlaceVerificationErrorCode =
+  | 'NotFound'
+  | 'NotAdmin'
+  // Adding a place from OSM (addPlaceFromOsm):
+  | 'NotInOsm'
+  | 'NoPosition'
+  | 'NoCategory'
+  | 'PublicCategory'
+  | 'OutsideArea'
 
 const STATUS_FOR: Record<PlaceVerificationErrorCode, number> = {
   NotFound: 404,
   // The session says ADMIN but the account no longer is one (the JWT lives 30 days).
   NotAdmin: 403,
+  NotInOsm: 404,
+  NoPosition: 400,
+  NoCategory: 400,
+  PublicCategory: 400,
+  OutsideArea: 400,
 }
 
 export class PlaceVerificationError extends Error {
@@ -219,6 +249,119 @@ export async function unverifyPlace(
     return toSummary(row)
   } catch (err) {
     if (isMissingRow(err)) throw new PlaceVerificationError('NotFound', 'Place not found')
+    throw err
+  }
+}
+
+/** The categories `add` may create: those the public does not see until a visit (today, CAFE). */
+export const ADDABLE_CATEGORIES: PlaceCategory[] = Object.values(PlaceCategory).filter(
+  (category) => !(VISIBLE_CATEGORIES as readonly PlaceCategory[]).includes(category),
+)
+
+export interface AddResult {
+  /** false when the element was already in the database: nothing was written. */
+  created: boolean
+  place: VerificationSummary
+}
+
+/** What OSM files an element under, for an error message: `amenity=restaurant`. */
+function osmKind(tags: Record<string, string> | undefined): string {
+  const keys = ['amenity', 'leisure', 'tourism', 'shop'].filter((key) => tags?.[key])
+  return keys.map((key) => `${key}=${tags![key]}`).join(', ') || 'no amenity, leisure, tourism or shop tag'
+}
+
+async function findByOsmId(prisma: PrismaClient, osmId: string): Promise<SummaryRow | null> {
+  return prisma.place.findUnique({ where: { osmId }, select: SUMMARY_SELECT })
+}
+
+/**
+ * Add one place from an OSM element, hidden until an admin verifies it (Jérôme,
+ * 26 Oct 2026).
+ *
+ * The seeder only takes amenity=cafe, so a brunch place OSM files as
+ * amenity=restaurant + cuisine=breakfast (By Jarmusch West, node 11007237505)
+ * never reached the database and could not be verified. This brings one in by
+ * hand: its name, its position and the stroller tags OSM states (mapOsmTags),
+ * under the category the admin gives, or the element's own. Only hidden
+ * categories: nothing reaches the map before a visit. A missing playground, park
+ * or picnic site is the seeder's job.
+ *
+ * Never a duplicate: an element already in the database (typed or legacy id) is
+ * returned untouched. The element must lie inside `area` (the Rotterdam bbox by
+ * default), which also catches a mistyped id that lands on a café elsewhere.
+ */
+export async function addPlaceFromOsm(
+  prisma: PrismaClient,
+  ref: OsmRef,
+  {
+    category,
+    area = DEFAULT_BBOX,
+    fetchElement = fetchOsmElement,
+  }: {
+    category?: PlaceCategory
+    area?: string
+    fetchElement?: (ref: OsmRef) => Promise<OverpassElement | null>
+  } = {},
+): Promise<AddResult> {
+  if (category && !ADDABLE_CATEGORIES.includes(category)) {
+    throw new PlaceVerificationError('PublicCategory', `A ${category} is public at once; add only creates hidden places`)
+  }
+
+  const osmId = osmIdFor(ref)
+  const known = await findByOsmId(prisma, osmId)
+  if (known) return { created: false, place: toSummary(known) }
+
+  const element = await fetchElement(ref)
+  const label = `${ref.type}/${ref.id}`
+  if (!element) throw new PlaceVerificationError('NotInOsm', `${label} is not in OpenStreetMap (or was deleted)`)
+  const coords = elementCoords(element)
+  if (!coords) throw new PlaceVerificationError('NoPosition', `${label} has no position in OpenStreetMap`)
+  if (!insideBbox(coords, area)) {
+    throw new PlaceVerificationError('OutsideArea', `${label} lies outside the area TinyHike covers (${area})`)
+  }
+
+  // Rows seeded before ids carried their type read `osm:<id>`; the position tells
+  // whether it is this element or an unrelated one sharing the number.
+  const legacy = await findByOsmId(prisma, legacyOsmId(element))
+  if (legacy && isSameFeature(element, legacy)) return { created: false, place: toSummary(legacy) }
+
+  const chosen = category ?? categoryOf(element.tags)
+  if (!chosen) {
+    throw new PlaceVerificationError(
+      'NoCategory',
+      `OSM files ${label} as ${osmKind(element.tags)}: add it with --category ${ADDABLE_CATEGORIES.join('|')}`,
+    )
+  }
+  if (!ADDABLE_CATEGORIES.includes(chosen)) {
+    throw new PlaceVerificationError('PublicCategory', `${label} is a ${chosen}, public at once: pnpm seed:osm imports those`)
+  }
+
+  try {
+    const row = await prisma.place.create({
+      data: {
+        lat: coords.lat,
+        lng: coords.lng,
+        osmId,
+        source: 'OSM',
+        // As the seeder does: OSM is trusted. Approved is not public: the category
+        // keeps it hidden until a visit (lib/place-visibility.ts).
+        status: 'APPROVED',
+        category: chosen,
+        ...mapOsmTags(element.tags),
+        // Whatever OSM files it under, the admin says it is a café, and every café
+        // row carries hasCafe (pnpm backfill:osm-tags checks the two agree).
+        ...(chosen === 'CAFE' ? { hasCafe: true } : {}),
+        translations: { create: translationsFor(element.tags?.name, kindForCategory(chosen)) },
+      },
+      select: SUMMARY_SELECT,
+    })
+    return { created: true, place: toSummary(row) }
+  } catch (err) {
+    // Added by someone else between the lookup and the insert: osmId is unique.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      const raced = await findByOsmId(prisma, osmId)
+      if (raced) return { created: false, place: toSummary(raced) }
+    }
     throw err
   }
 }

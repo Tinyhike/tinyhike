@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Prisma } from '@prisma/client'
 import {
+  addPlaceFromOsm,
+  ADDABLE_CATEGORIES,
   listPlacesForVerification,
   verifyPlace,
   unverifyPlace,
@@ -9,6 +11,7 @@ import {
   VERIFICATION_POINTS,
 } from '../src/services/place-verification.js'
 import { TAG_KEYS } from '../src/lib/tags.js'
+import type { OverpassElement } from '../src/lib/osm.js'
 import { makePrismaMock, asPrisma, type PrismaMock } from './helpers.js'
 
 const ADMIN = 'cadmin0000000000000000001'
@@ -179,6 +182,189 @@ describe('place verification', () => {
     it('with no filter, lists everything', async () => {
       await listPlacesForVerification(asPrisma(db), { take: 10 })
       expect((db.place.findMany.mock.calls[0][0] as { where: unknown }).where).toEqual({})
+    })
+  })
+
+  describe('addPlaceFromOsm', () => {
+    const JARMUSCH = { type: 'node' as const, id: 11007237505 }
+    const jarmusch: OverpassElement = {
+      type: 'node',
+      id: 11007237505,
+      lat: 51.9101778,
+      lon: 4.4500768,
+      tags: {
+        amenity: 'restaurant',
+        cuisine: 'breakfast',
+        name: 'By Jarmusch West',
+        'addr:street': 'Nieuwe Binnenweg',
+        'addr:housenumber': '575',
+      },
+    }
+    const osm = (el: OverpassElement | null) => vi.fn().mockResolvedValue(el)
+    const createArg = () => db.place.create.mock.calls[0][0] as { data: Record<string, unknown>; select: Record<string, unknown> }
+
+    beforeEach(() => {
+      db.place.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+        row({ id: 'new', ...data, translations: [{ locale: 'nl', name: 'By Jarmusch West' }] }),
+      )
+    })
+
+    it('only cafés can be added today: every other category is public at once', () => {
+      expect(ADDABLE_CATEGORIES).toEqual(['CAFE'])
+    })
+
+    it('adds a brunch place OSM files as a restaurant, as a hidden café', async () => {
+      const fetchElement = osm(jarmusch)
+      const result = await addPlaceFromOsm(asPrisma(db), JARMUSCH, { category: 'CAFE', fetchElement })
+
+      expect(fetchElement).toHaveBeenCalledWith(JARMUSCH)
+      expect(createArg().data).toEqual({
+        lat: 51.9101778,
+        lng: 4.4500768,
+        osmId: 'osm:node/11007237505',
+        source: 'OSM',
+        status: 'APPROVED',
+        category: 'CAFE',
+        hasCafe: true,
+        translations: { create: [{ locale: 'nl', name: 'By Jarmusch West' }] },
+      })
+      expect(createArg().select).not.toHaveProperty('verifiedById')
+      expect(result.created).toBe(true)
+      expect(result.place).toMatchObject({ id: 'new', name: 'By Jarmusch West', category: 'CAFE', verifiedAt: null, visible: false })
+    })
+
+    it('carries over the stroller tags OSM states, and nothing it does not', async () => {
+      const tagged = { ...jarmusch, tags: { ...jarmusch.tags, wheelchair: 'yes', changing_table: 'yes', outdoor_seating: 'no' } }
+      await addPlaceFromOsm(asPrisma(db), JARMUSCH, { category: 'CAFE', fetchElement: osm(tagged) })
+      expect(createArg().data).toMatchObject({ wheelchairOk: true, hasChangingTable: true, hasOutdoorSeating: false })
+      expect(createArg().data).not.toHaveProperty('hasToilets')
+      expect(createArg().data).not.toHaveProperty('isStrollerWide')
+    })
+
+    it('takes an amenity=cafe element’s own category when none is given', async () => {
+      const cafe = { ...jarmusch, tags: { amenity: 'cafe', name: 'Hopper' } }
+      await addPlaceFromOsm(asPrisma(db), JARMUSCH, { fetchElement: osm(cafe) })
+      expect(createArg().data).toMatchObject({ category: 'CAFE', hasCafe: true })
+    })
+
+    it('names an unnamed café generically in the three languages', async () => {
+      const unnamed = { ...jarmusch, tags: { amenity: 'restaurant' } }
+      await addPlaceFromOsm(asPrisma(db), JARMUSCH, { category: 'CAFE', fetchElement: osm(unnamed) })
+      expect(createArg().data.translations).toEqual({
+        create: [
+          { locale: 'nl', name: 'Café' },
+          { locale: 'fr', name: 'Café' },
+          { locale: 'en', name: 'Café' },
+        ],
+      })
+    })
+
+    it('places a way at its centre', async () => {
+      const way: OverpassElement = { type: 'way', id: 275591110, center: { lat: 51.9, lon: 4.47 }, tags: { amenity: 'restaurant' } }
+      await addPlaceFromOsm(asPrisma(db), { type: 'way', id: 275591110 }, { category: 'CAFE', fetchElement: osm(way) })
+      expect(createArg().data).toMatchObject({ lat: 51.9, lng: 4.47, osmId: 'osm:way/275591110' })
+    })
+
+    it('never duplicates: a known osmId is returned as it is, before asking OSM', async () => {
+      db.place.findUnique.mockResolvedValueOnce(row({ id: 'p-known', osmId: 'osm:node/11007237505', verifiedAt: null }))
+      const fetchElement = osm(jarmusch)
+      const result = await addPlaceFromOsm(asPrisma(db), JARMUSCH, { category: 'CAFE', fetchElement })
+
+      expect(db.place.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { osmId: 'osm:node/11007237505' } }))
+      expect(fetchElement).not.toHaveBeenCalled()
+      expect(db.place.create).not.toHaveBeenCalled()
+      expect(db.place.update).not.toHaveBeenCalled()
+      expect(result).toMatchObject({ created: false, place: { id: 'p-known' } })
+    })
+
+    it('recognises a row seeded under the legacy untyped id at the same spot', async () => {
+      db.place.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(row({ id: 'p-legacy', osmId: 'osm:11007237505', lat: 51.9101778, lng: 4.4500768 }))
+      const result = await addPlaceFromOsm(asPrisma(db), JARMUSCH, { category: 'CAFE', fetchElement: osm(jarmusch) })
+
+      expect(db.place.findUnique.mock.calls[1][0]).toMatchObject({ where: { osmId: 'osm:11007237505' } })
+      expect(db.place.create).not.toHaveBeenCalled()
+      expect(result).toMatchObject({ created: false, place: { id: 'p-legacy' } })
+    })
+
+    it('adds the element when the legacy id belongs to another feature elsewhere', async () => {
+      db.place.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(row({ id: 'p-other', osmId: 'osm:11007237505', lat: 51.88, lng: 4.51 }))
+      const result = await addPlaceFromOsm(asPrisma(db), JARMUSCH, { category: 'CAFE', fetchElement: osm(jarmusch) })
+      expect(result.created).toBe(true)
+    })
+
+    it('returns the row another run inserted between the lookup and the insert', async () => {
+      db.place.create.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' }),
+      )
+      db.place.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(row({ id: 'p-raced', osmId: 'osm:node/11007237505' }))
+      const result = await addPlaceFromOsm(asPrisma(db), JARMUSCH, { category: 'CAFE', fetchElement: osm(jarmusch) })
+      expect(result).toMatchObject({ created: false, place: { id: 'p-raced' } })
+    })
+
+    it('asks for a category when OSM files the element under none of ours', async () => {
+      const err = await addPlaceFromOsm(asPrisma(db), JARMUSCH, { fetchElement: osm(jarmusch) }).catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(PlaceVerificationError)
+      expect(err).toMatchObject({ code: 'NoCategory', statusCode: 400 })
+      expect((err as Error).message).toContain('amenity=restaurant')
+      expect(db.place.create).not.toHaveBeenCalled()
+    })
+
+    it.each(['PLAYGROUND', 'PARK', 'PICNIC_SITE'] as const)('refuses to add a %s, which the public would see at once', async (category) => {
+      const fetchElement = osm(jarmusch)
+      await expect(addPlaceFromOsm(asPrisma(db), JARMUSCH, { category, fetchElement })).rejects.toMatchObject({
+        code: 'PublicCategory',
+      })
+      expect(fetchElement).not.toHaveBeenCalled()
+      expect(db.place.create).not.toHaveBeenCalled()
+    })
+
+    it('refuses a playground element given no category: the seeder imports those, visible', async () => {
+      const playground = { ...jarmusch, tags: { leisure: 'playground' } }
+      await expect(addPlaceFromOsm(asPrisma(db), JARMUSCH, { fetchElement: osm(playground) })).rejects.toMatchObject({
+        code: 'PublicCategory',
+      })
+      expect(db.place.create).not.toHaveBeenCalled()
+    })
+
+    it('reports an element OSM does not have', async () => {
+      await expect(addPlaceFromOsm(asPrisma(db), JARMUSCH, { category: 'CAFE', fetchElement: osm(null) })).rejects.toMatchObject({
+        code: 'NotInOsm',
+        statusCode: 404,
+      })
+      expect(db.place.create).not.toHaveBeenCalled()
+    })
+
+    it('refuses an element with no position', async () => {
+      const way: OverpassElement = { type: 'way', id: 1, tags: { amenity: 'cafe' } }
+      await expect(
+        addPlaceFromOsm(asPrisma(db), { type: 'way', id: 1 }, { category: 'CAFE', fetchElement: osm(way) }),
+      ).rejects.toMatchObject({ code: 'NoPosition' })
+      expect(db.place.create).not.toHaveBeenCalled()
+    })
+
+    it('refuses an element outside the area, such as a mistyped id landing on a café abroad', async () => {
+      const paris = { ...jarmusch, lat: 48.8566, lon: 2.3522 }
+      await expect(
+        addPlaceFromOsm(asPrisma(db), JARMUSCH, { category: 'CAFE', fetchElement: osm(paris) }),
+      ).rejects.toMatchObject({ code: 'OutsideArea' })
+      expect(db.place.create).not.toHaveBeenCalled()
+    })
+
+    it('honours another area when one is given', async () => {
+      const paris = { ...jarmusch, lat: 48.8566, lon: 2.3522 }
+      const result = await addPlaceFromOsm(asPrisma(db), JARMUSCH, {
+        category: 'CAFE',
+        area: '48.8,2.3,48.9,2.4',
+        fetchElement: osm(paris),
+      })
+      expect(result.created).toBe(true)
     })
   })
 })

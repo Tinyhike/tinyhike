@@ -154,6 +154,17 @@ export function categoryOf(tags: Record<string, string> | undefined): PlaceCateg
   return kind ? CATEGORY_FOR[kind] : null
 }
 
+/** The kind whose generic name a place of this category takes when OSM gives it none. */
+export function kindForCategory(category: PlaceCategory): PlaceKind | null {
+  return (Object.keys(CATEGORY_FOR) as PlaceKind[]).find((kind) => CATEGORY_FOR[kind] === category) ?? null
+}
+
+/** Whether a point lies inside an Overpass-order bbox (south,west,north,east). */
+export function insideBbox({ lat, lng }: { lat: number; lng: number }, bbox: string): boolean {
+  const [south, west, north, east] = bbox.split(',').map(Number)
+  return lat >= south && lat <= north && lng >= west && lng <= east
+}
+
 /**
  * Fallback names for features OSM leaves unnamed.
  *
