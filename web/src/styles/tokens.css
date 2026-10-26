@@ -11,6 +11,12 @@
  * Every hue has a `-deep` variant. Use the bright value for fills, borders and
  * accents; use `-deep` for anything carrying white text, where the bright value
  * wouldn't reach 4.5:1 contrast.
+ *
+ * Measured (WCAG 2): every `-deep` reaches 4.5:1 with white — berry 4.93,
+ * sun 5.01, mint 5.33, sky 5.77, grape 7.11 — and also as text on --surface-tint
+ * (berry 4.68, sun 4.75, mint 5.05). As text on the mint tint #dff8ef, only mint,
+ * sky and grape pass (4.77, 5.17, 6.37); berry and sun fall just short. The bright
+ * values do NOT carry text: --sky with white is 2.72:1.
  */
 
 :root {
@@ -18,9 +24,9 @@
   --berry: #ef476f;        /* primary action, map pins, "Map" tab */
   --berry-deep: #d81e5b;
   --sun: #ffd166;          /* banners, tip callouts, PWA splash + theme colour */
-  --sun-deep: #e08c00;
+  --sun-deep: #a35f00;
   --mint: #06d6a0;         /* positive / confirmed */
-  --mint-deep: #04936f;
+  --mint-deep: #037a5c;
   --sky: #21a9d8;          /* links, focus rings, "Profile" tab */
   --sky-deep: #0b6e8f;
   --grape: #9b5de5;        /* map clusters, "Lists" tab */

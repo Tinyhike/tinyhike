@@ -3,12 +3,19 @@ import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.js'
+import { retryTransient } from './lib/errors.js'
 import { I18nProvider } from './lib/i18n.js'
 import { detectLocale } from './lib/locale.js'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import './index.css'
 
-const qc = new QueryClient()
+const qc = new QueryClient({
+  defaultOptions: {
+    // A 4xx is the server's final answer; retrying it only delays the message.
+    // Queries with their own policy (useMe, my-review) set `retry` themselves.
+    queries: { retry: retryTransient(3) },
+  },
+})
 
 // index.html ships lang="nl"; correct it before first paint so screen readers and
 // the browser's translation prompt agree with what's actually rendered.

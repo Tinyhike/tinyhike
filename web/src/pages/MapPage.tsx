@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl'
 import { useQuery } from '@tanstack/react-query'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api.js'
+import { errorKey } from '../lib/errors.js'
 import { useI18n } from '../lib/i18n.js'
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
@@ -188,7 +189,9 @@ export default function MapPage() {
       {isError && (
         <div className="map-error" role="alert">
           {t('map.error')}
-          {error instanceof Error ? ` ${error.message}` : ''}
+          {/* The cause, in the UI language, when it tells the user something they
+              can act on (offline, slow down). Never error.message: that is English. */}
+          {errorKey(error) !== 'err.generic' && ` ${t(errorKey(error))}`}
         </div>
       )}
 

@@ -1,33 +1,40 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { api } from '../lib/api.js'
+import { api, ApiError } from '../lib/api.js'
+import { errorKey, type ErrorKey } from '../lib/errors.js'
 import { useI18n } from '../lib/i18n.js'
 import { LOCALES, LOCALE_LABELS } from '../lib/locale.js'
-
-interface Me {
-  id: string
-  email: string
-  handle: string | null
-  role: string
-}
+import { signInPath } from '../lib/next-path.js'
+import { clearAllDrafts } from '../lib/review-draft.js'
+import { markSignedOut, useMe } from '../lib/session.js'
+import SessionRetry from '../components/SessionRetry.js'
 
 export default function ProfilePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { t } = useI18n()
-
-  const { data, isLoading } = useQuery<Me>({
-    queryKey: ['me'],
-    // A 401 here just means "signed out" — retrying it three times only delays the
-    // sign-in prompt.
-    retry: false,
-    queryFn: () => api.get('/api/auth/me'),
-  })
+  const { me, status, checking, refetch } = useMe()
+  const [signOutError, setSignOutError] = useState<ErrorKey | null>(null)
 
   async function signOut() {
-    await api.post('/api/auth/logout', {})
+    setSignOutError(null)
+    try {
+      await api.post('/api/auth/logout', {})
+    } catch (err) {
+      // A 401 means the session was already gone: that is the outcome we wanted.
+      if (!(err instanceof ApiError && err.status === 401)) {
+        setSignOutError(errorKey(err))
+        return
+      }
+    }
     // Drop every cached response: some of it is scoped to the user we just left.
     queryClient.clear()
+    // Unsent reviews are stored on the device: on a shared phone, the next parent
+    // to sign in must not find them in the form.
+    clearAllDrafts()
+    // clear() alone would leave ['me'] to be refetched; record the answer we know.
+    markSignedOut(queryClient)
     navigate('/')
   }
 
@@ -35,26 +42,33 @@ export default function ProfilePage() {
     <div className="page">
       <h1>{t('profile.title')}</h1>
 
-      {isLoading && (
+      {status === 'pending' && (
         <div className="skeleton-group">
           <div className="skeleton skeleton--line skeleton--short" />
         </div>
       )}
 
-      {!isLoading && !data && (
+      {status === 'unknown' && <SessionRetry onRetry={refetch} busy={checking} />}
+
+      {status === 'signedOut' && (
         <>
           <p className="state-detail">{t('profile.signedOut')}</p>
-          <Link to="/auth" className="btn" style={{ display: 'inline-block', textDecoration: 'none', color: '#fff' }}>
+          <Link to={signInPath('/profile')} className="btn">
             {t('profile.signIn')}
           </Link>
         </>
       )}
 
-      {data && (
+      {me && (
         <>
-          <p>{data.email}</p>
-          {data.handle && <p className="state-detail">@{data.handle}</p>}
-          <p className="state-detail">{data.role}</p>
+          <p>{me.email}</p>
+          {me.handle && <p className="state-detail">@{me.handle}</p>}
+          <p className="state-detail">{me.role}</p>
+          {signOutError && (
+            <p className="state state--error" role="alert">
+              {t(signOutError)}
+            </p>
+          )}
           <button onClick={signOut} className="btn">
             {t('profile.signOut')}
           </button>

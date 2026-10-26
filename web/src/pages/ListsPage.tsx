@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api.js'
+import { errorKey } from '../lib/errors.js'
 import { useI18n } from '../lib/i18n.js'
 
 interface ListSummary {
@@ -32,7 +33,9 @@ export default function ListsPage() {
       {isError && (
         <p className="state state--error" role="alert">
           {t('lists.error')}
-          {error instanceof Error ? ` ${error.message}` : ''}
+          {/* The cause, in the UI language, when it tells the user something they
+              can act on (offline, slow down). Never error.message: that is English. */}
+          {errorKey(error) !== 'err.generic' && ` ${t(errorKey(error))}`}
         </p>
       )}
 

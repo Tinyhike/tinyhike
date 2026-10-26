@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
+import { errorKey } from '../lib/errors.js'
 import { useI18n, type MessageKey } from '../lib/i18n.js'
 import { TAGS, allTags, collapsedTags, groupOrder, unknownCount, type PlaceTags, type TagDef, type TagKey, type TagGroup } from '../lib/tags.js'
 
@@ -12,12 +14,14 @@ import { TAGS, allTags, collapsedTags, groupOrder, unknownCount, type PlaceTags,
  * that opens a yes/no vote). Unknown is the dominant state of the dataset, so it
  * is drawn as the invitation to contribute, not as missing data.
  *
- * Votes post to the anonymous reviews endpoint as tagsConfirmed/tagsDisputed —
- * they accrue as evidence; flipping the Place boolean itself stays a moderation
- * decision (see ROADMAP).
+ * Votes post to the reviews endpoint as tag-only rows (tagsConfirmed/tagsDisputed)
+ * and need no account: one tap, anonymous; the API records the voter when a
+ * session happens to exist. They accrue as evidence; flipping the Place boolean
+ * itself stays a moderation decision (see ROADMAP).
  */
 export default function PlaceAmenities({ placeId, place }: { placeId: string; place: PlaceTags }) {
   const { t } = useI18n()
+  const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
   // Session-local record of this visitor's votes: instant feedback, no re-vote UI.
   const [voted, setVoted] = useState<Partial<Record<TagKey, boolean>>>({})
@@ -38,12 +42,20 @@ export default function PlaceAmenities({ placeId, place }: { placeId: string; pl
         anonymous: true,
       })
       showToast(t('amen.voteThanks'))
-    } catch {
+      // The "N facts confirmed" figure in the reviews section is counted on the
+      // server: refetch the place (every locale variant) so it moves. `voted`
+      // survives the refetch, since this component is keyed by place and a vote
+      // never flips the Place boolean it overrides.
+      void queryClient.invalidateQueries({ queryKey: ['place', placeId] })
+    } catch (err) {
       setVoted((v) => {
         const { [tag]: _dropped, ...rest } = v
         return rest
       })
-      showToast(t('amen.voteError'))
+      // A parent tapping through a dozen amenities can hit the per-minute limit:
+      // say so, rather than a generic failure that invites tapping again at once.
+      const key = errorKey(err)
+      showToast(t(key === 'err.tooMany' || key === 'err.network' ? key : 'amen.voteError'))
     }
   }
 

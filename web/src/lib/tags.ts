@@ -38,6 +38,15 @@ export const TAG_KEYS = [
 
 export type TagKey = (typeof TAG_KEYS)[number]
 
+/**
+ * Narrows a tag string from the API to a key we can label. Review rows predating
+ * the API's tag validation may hold renamed or junk values; those are skipped
+ * rather than echoed raw into the page.
+ */
+export function isTagKey(value: string): value is TagKey {
+  return (TAG_KEYS as readonly string[]).includes(value)
+}
+
 export const TAGS: TagDef[] = [
   // 👶 Pour bébé
   { key: 'hasChangingTable', group: 'baby', emoji: '🚼' },

@@ -1,33 +1,37 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, ApiError } from '../lib/api.js'
-import { useI18n } from '../lib/i18n.js'
+import { errorKey } from '../lib/errors.js'
+import { useI18n, type MessageKey } from '../lib/i18n.js'
+import { safeNext } from '../lib/next-path.js'
+import { useMe } from '../lib/session.js'
 
 type Status = 'idle' | 'sending' | 'sent' | 'error'
 
 export default function AuthPage() {
   const { t } = useI18n()
+  const [params] = useSearchParams()
+  const { status: session } = useMe()
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<Status>('idle')
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState<MessageKey | null>(null)
+
+  // Where the user came from (a place sheet, the profile…). It rides along with the
+  // magic link so the link lands back there, and the Back links use it too. The
+  // server re-checks it against the same allowlist.
+  const next = safeNext(params.get('next'))
+  const backTo = next ?? '/'
+  const backLabel = next && next !== '/' ? t('auth.backPrev') : t('auth.back')
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setStatus('sending')
     try {
-      await api.post('/api/auth/magic', { email })
+      await api.post('/api/auth/magic', next ? { email, next } : { email })
       setStatus('sent')
     } catch (err) {
-      // Previously this promise rejected unhandled: a rate limit, a network drop or a
-      // Resend failure all left the form sitting there as if nothing had happened.
       setStatus('error')
-      setMessage(
-        err instanceof ApiError && err.status === 429
-          ? t('auth.tooMany')
-          : err instanceof Error
-            ? err.message
-            : t('auth.failed'),
-      )
+      setMessage(authErrorKey(err))
     }
   }
 
@@ -39,8 +43,21 @@ export default function AuthPage() {
           {t('auth.sentTo')} <strong>{email}</strong>. {t('auth.validFor')}
         </p>
         <p className="state-detail">{t('auth.spam')}</p>
-        <Link to="/" className="btn" style={{ display: 'inline-block', textDecoration: 'none', color: '#fff' }}>
-          {t('auth.back')}
+        <Link to={backTo} className="btn">
+          {backLabel}
+        </Link>
+      </div>
+    )
+  }
+
+  // A stray tap on a sign-in link shouldn't send a signed-in parent a new magic link.
+  if (session === 'signedIn') {
+    return (
+      <div className="page">
+        <h1>{t('auth.title')}</h1>
+        <p className="sheet-text">{t('auth.already')}</p>
+        <Link to={backTo} className="btn">
+          {t('auth.continue')}
         </Link>
       </div>
     )
@@ -64,9 +81,9 @@ export default function AuthPage() {
           aria-invalid={status === 'error'}
         />
 
-        {status === 'error' && (
+        {status === 'error' && message && (
           <p className="state state--error" role="alert">
-            {message}
+            {t(message)}
           </p>
         )}
 
@@ -76,8 +93,18 @@ export default function AuthPage() {
       </form>
 
       <p style={{ marginTop: 18 }}>
-        <Link to="/">{t('auth.back')}</Link>
+        <Link to={backTo}>{backLabel}</Link>
       </p>
     </div>
   )
+}
+
+/** The magic-link endpoint's failures, in the user's language. */
+function authErrorKey(err: unknown): MessageKey {
+  if (err instanceof ApiError && err.status === 400) return 'auth.badEmail'
+  const key = errorKey(err)
+  if (key === 'err.tooMany') return 'auth.tooMany'
+  if (key === 'err.network') return key
+  // 502 is the mail provider refusing the send; nothing the user can fix but retry.
+  return 'auth.failed'
 }
