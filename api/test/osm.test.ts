@@ -8,6 +8,8 @@ import {
   overpassQuery,
   translationsFor,
   kindOf,
+  categoryOf,
+  backfillUpdate,
 } from '../src/lib/osm.js'
 
 describe('overpassQuery', () => {
@@ -155,6 +157,57 @@ describe('kindOf', () => {
   it('returns null for anything else', () => {
     expect(kindOf({ amenity: 'pharmacy' })).toBeNull()
     expect(kindOf(undefined)).toBeNull()
+  })
+})
+
+describe('categoryOf', () => {
+  it('gives each of the four kinds its Place.category', () => {
+    expect(categoryOf({ leisure: 'playground' })).toBe('PLAYGROUND')
+    expect(categoryOf({ leisure: 'park' })).toBe('PARK')
+    expect(categoryOf({ amenity: 'cafe' })).toBe('CAFE')
+    expect(categoryOf({ tourism: 'picnic_site' })).toBe('PICNIC_SITE')
+  })
+
+  it('is null for an element that is none of them: a pub, a restaurant, no tags', () => {
+    expect(categoryOf({ amenity: 'pub' })).toBeNull()
+    expect(categoryOf({ amenity: 'restaurant' })).toBeNull()
+    expect(categoryOf({ leisure: 'fitness_station' })).toBeNull()
+    expect(categoryOf({})).toBeNull()
+    expect(categoryOf(undefined)).toBeNull()
+  })
+
+  it('follows kindOf precedence when an element carries two kinds', () => {
+    // None does in Rotterdam today (26 Oct 2026), but a playground inside a café's
+    // grounds must stay a visible playground, not become a hidden café.
+    expect(categoryOf({ leisure: 'playground', amenity: 'cafe' })).toBe('PLAYGROUND')
+    expect(categoryOf({ leisure: 'park', amenity: 'cafe' })).toBe('PARK')
+    expect(categoryOf({ amenity: 'cafe', tourism: 'picnic_site' })).toBe('CAFE')
+  })
+})
+
+describe('backfillUpdate', () => {
+  const blank = { category: null, hasToilets: null, hasCafe: null }
+
+  it('fills a missing category along with the missing tags', () => {
+    expect(backfillUpdate({ amenity: 'cafe', toilets: 'yes' }, blank)).toEqual({
+      category: 'CAFE',
+      hasCafe: true,
+      hasToilets: true,
+    })
+  })
+
+  it('never replaces a category already set', () => {
+    expect(backfillUpdate({ amenity: 'cafe' }, { ...blank, category: 'PARK' })).toEqual({ hasCafe: true })
+  })
+
+  it('leaves the category null when the element matches no category', () => {
+    expect(backfillUpdate({ amenity: 'pub' }, blank)).toEqual({})
+  })
+
+  it('never overwrites a tag an admin recorded on a visit', () => {
+    expect(backfillUpdate({ amenity: 'cafe', toilets: 'yes' }, { category: 'CAFE', hasToilets: false, hasCafe: true })).toEqual(
+      {},
+    )
   })
 })
 

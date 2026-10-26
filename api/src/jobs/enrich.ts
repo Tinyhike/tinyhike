@@ -9,8 +9,9 @@
 
 import 'dotenv/config'
 import Anthropic from '@anthropic-ai/sdk'
-import { PrismaClient, Prisma } from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
+import { UNENRICHED_WHERE } from '../lib/enrichment.js'
 
 const prisma = new PrismaClient()
 const claude = new Anthropic({ maxRetries: 5 })
@@ -31,15 +32,6 @@ const PayloadSchema = z.object({
   fr: TranslationSchema.optional(),
   en: TranslationSchema.optional(),
 })
-
-// Un-enriched = OSM-origin, not rejected, and Claude hasn't written descriptions yet.
-// enrichedAt is the single canonical "needs enrichment" signal; source is provenance
-// only (never mutated here), so enriched OSM places keep source='OSM'.
-const UNENRICHED_WHERE: Prisma.PlaceWhereInput = {
-  status: { not: 'REJECTED' },
-  source: 'OSM',
-  enrichedAt: null,
-}
 
 async function enrich() {
   let enriched = 0

@@ -1,9 +1,16 @@
 import { FastifyInstance } from 'fastify'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { z } from 'zod'
-import { requireAuth, optionalAuth, type SessionPayload } from '../plugins/auth.js'
+import { requireAuth, optionalAuth } from '../plugins/auth.js'
 import { clientKey } from '../lib/client-key.js'
 import { TAG_KEYS } from '../lib/tags.js'
+import {
+  canSeePlace,
+  publicPlaceWhere,
+  withoutPrivateColumns,
+  PRIVATE_PLACE_OMIT,
+  VISIBILITY_SELECT,
+} from '../lib/place-visibility.js'
 
 const PlaceSubmitSchema = z.object({
   lat: z.number().min(-90).max(90),
@@ -12,6 +19,9 @@ const PlaceSubmitSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   tips: z.string().max(300).optional(),
+  // What the parent says the place is. A moderator approves the proposal; a café
+  // (or no category) still stays hidden until verified.
+  category: z.enum(['PLAYGROUND', 'PARK', 'PICNIC_SITE', 'CAFE']).optional(),
 })
 
 const DEFAULT_LIMIT = 200
@@ -82,22 +92,6 @@ const TAG_ONLY = { score: null, comment: null } satisfies Prisma.ReviewWhereInpu
 // Newest first; id breaks createdAt ties so cursor pagination never skips or
 // repeats a row.
 const REVIEW_ORDER = [{ createdAt: 'desc' }, { id: 'desc' }] satisfies Prisma.ReviewOrderByWithRelationInput[]
-
-/** What the visibility rule needs, and nothing more. */
-const ACCESS_SELECT = { id: true, status: true, submittedById: true } satisfies Prisma.PlaceSelect
-
-/**
- * A place is public once APPROVED. Before that (or after a rejection) only the
- * parent who submitted it and the moderators may see it, or contribute to it.
- */
-function canSee(
-  place: { status: string; submittedById: string | null },
-  session: SessionPayload | undefined,
-): boolean {
-  if (place.status === 'APPROVED') return true
-  if (!session) return false
-  return session.role === 'ADMIN' || place.submittedById === session.sub
-}
 
 const NOT_FOUND = { error: 'NotFound', message: 'Place not found' } as const
 
@@ -221,7 +215,9 @@ export default async function placesRoutes(app: FastifyInstance) {
   // GET /api/places?bbox=west,south,east,north&locale=nl&limit=200
   app.get<{ Querystring: { bbox?: string; locale?: string; limit?: string } }>('/', async (req, reply) => {
     const { bbox, locale = 'nl', limit: rawLimit } = req.query
-    const where: Record<string, unknown> = { status: 'APPROVED' }
+    // Public places only (lib/place-visibility.ts): unverified cafés never reach the
+    // map, and the X-Total-Count below counts with the same filter.
+    const where: Prisma.PlaceWhereInput = { ...publicPlaceWhere }
 
     let limit = DEFAULT_LIMIT
     if (rawLimit !== undefined) {
@@ -252,9 +248,10 @@ export default async function placesRoutes(app: FastifyInstance) {
     // client needs to know — silently dropping pins reads as missing data.
     const rows = await app.prisma.place.findMany({
       where,
-      // Who submitted a place is internal: joined with a public list owner's id it
-      // would attribute every contribution to a named parent.
-      omit: { submittedById: true },
+      // Who submitted or verified a place is internal: joined with a public list
+      // owner's id it would attribute every contribution to a named parent. The
+      // verification date stays private too.
+      omit: PRIVATE_PLACE_OMIT,
       include: {
         translations: { where: { locale } },
         // Explicit select: a Photo row also carries uploadedById, r2Key and the
@@ -280,8 +277,9 @@ export default async function placesRoutes(app: FastifyInstance) {
   })
 
   // GET /api/places/:id?locale=nl
-  // optionalAuth: a PENDING place is visible to the parent who submitted it and
-  // to admins, so the session is read when there is one.
+  // optionalAuth: a place the public can't see (pending, or an unverified café)
+  // is visible to the parent who submitted it and to admins, so the session is
+  // read when there is one.
   app.get<{ Params: { id: string }; Querystring: { locale?: string } }>(
     '/:id',
     { preHandler: optionalAuth },
@@ -294,7 +292,7 @@ export default async function placesRoutes(app: FastifyInstance) {
           reviews: { where: WRITTEN, orderBy: REVIEW_ORDER, take: DETAIL_REVIEWS, select: REVIEW_SELECT },
         },
       })
-      if (!place || !canSee(place, req.session)) return reply.status(404).send(NOT_FOUND)
+      if (!place || !canSeePlace(place, req.session)) return reply.status(404).send(NOT_FOUND)
 
       const [reviewCount, voteCount, agg] = await Promise.all([
         app.prisma.review.count({ where: { placeId: place.id, ...WRITTEN } }),
@@ -308,12 +306,13 @@ export default async function placesRoutes(app: FastifyInstance) {
         }),
       ])
 
-      // submittedById is loaded only for the visibility check above and stripped
-      // here. It cannot be dropped with `omit` in the query, since canSee needs it.
-      const { submittedById: _submittedById, reviews, ...columns } = place
+      // submittedById and verifiedAt are loaded for the visibility check above and
+      // stripped here, with verifiedById and updatedAt: canSeePlace needs the first
+      // two, the public needs none of them.
+      const { reviews, ...columns } = place
       const last = reviews.at(-1)
       return {
-        ...columns,
+        ...withoutPrivateColumns(columns),
         reviews: reviews.map(toReviewItem),
         reviewCount,
         voteCount,
@@ -335,8 +334,8 @@ export default async function placesRoutes(app: FastifyInstance) {
     }
     const { cursor, take } = query.data
 
-    const place = await app.prisma.place.findUnique({ where: { id: req.params.id }, select: ACCESS_SELECT })
-    if (!place || !canSee(place, req.session)) return reply.status(404).send(NOT_FOUND)
+    const place = await app.prisma.place.findUnique({ where: { id: req.params.id }, select: VISIBILITY_SELECT })
+    if (!place || !canSeePlace(place, req.session)) return reply.status(404).send(NOT_FOUND)
 
     if (cursor) {
       // Prisma treats an unknown cursor as "nothing after it" and returns an empty
@@ -366,10 +365,14 @@ export default async function placesRoutes(app: FastifyInstance) {
   })
 
   // GET /api/places/:id/my-review — the caller's own written review, to prefill
-  // the form: posting again updates it rather than adding a second one.
-  app.get<{ Params: { id: string } }>('/:id/my-review', { preHandler: requireAuth }, async (req) => {
+  // the form: posting again updates it rather than adding a second one. A place
+  // the caller can't see is a 404 here too, review or not.
+  app.get<{ Params: { id: string } }>('/:id/my-review', { preHandler: requireAuth }, async (req, reply) => {
+    const place = await app.prisma.place.findUnique({ where: { id: req.params.id }, select: VISIBILITY_SELECT })
+    if (!place || !canSeePlace(place, req.session)) return reply.status(404).send(NOT_FOUND)
+
     const mine = await app.prisma.review.findFirst({
-      where: { placeId: req.params.id, userId: req.session!.sub, ...WRITTEN },
+      where: { placeId: place.id, userId: req.session!.sub, ...WRITTEN },
       orderBy: REVIEW_ORDER,
       select: { score: true, comment: true },
     })
@@ -382,12 +385,13 @@ export default async function placesRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(400).send({ error: 'BadRequest', message: 'Invalid place', details: parsed.error.flatten() })
     }
-    const { lat, lng, locale, name, description, tips } = parsed.data
+    const { lat, lng, locale, name, description, tips, category } = parsed.data
 
     const place = await app.prisma.place.create({
       data: {
         lat,
         lng,
+        category,
         source: 'USER',
         status: 'PENDING',
         submittedById: req.session!.sub,
@@ -429,8 +433,8 @@ export default async function placesRoutes(app: FastifyInstance) {
         return reply.status(401).send({ error: 'Unauthorized', message: 'Sign in to rate or comment' })
       }
 
-      const place = await app.prisma.place.findUnique({ where: { id: req.params.id }, select: ACCESS_SELECT })
-      if (!place || !canSee(place, session)) return reply.status(404).send(NOT_FOUND)
+      const place = await app.prisma.place.findUnique({ where: { id: req.params.id }, select: VISIBILITY_SELECT })
+      if (!place || !canSeePlace(place, session)) return reply.status(404).send(NOT_FOUND)
 
       // A row with no userId has no author to show, so it is always anonymous.
       const anonymous = session ? parsed.data.anonymous : true

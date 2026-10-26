@@ -65,7 +65,7 @@ describe('photo upload', () => {
     vi.mocked(r2.deleteObject).mockResolvedValue(undefined)
 
     prisma = makePrismaMock()
-    prisma.place.findUnique.mockResolvedValue({ status: 'APPROVED', submittedById: null })
+    prisma.place.findUnique.mockResolvedValue({ status: 'APPROVED', category: 'PLAYGROUND', verifiedAt: null, submittedById: null })
     prisma.route.findUnique.mockResolvedValue({ status: 'APPROVED', authorId: null })
     app = await buildApp({ prisma: asPrisma(prisma), logger: false })
   })
@@ -290,11 +290,38 @@ describe('photo upload', () => {
         expect(res.json()).toEqual({ error: 'NotFound', message: 'Place not found' })
         expect(prisma.place.findUnique).toHaveBeenCalledWith({
           where: { id: PLACE },
-          select: { status: true, submittedById: true },
+          select: { id: true, status: true, category: true, verifiedAt: true, submittedById: true },
         })
         expect(r2.copyObject).not.toHaveBeenCalled()
       },
     )
+
+    it('answers 404 for an unverified café, before touching R2', async () => {
+      prisma.place.findUnique.mockResolvedValue({
+        id: PLACE,
+        status: 'APPROVED',
+        category: 'CAFE',
+        verifiedAt: null,
+        submittedById: null,
+      })
+      const res = await confirm({ key: KEY_A, placeId: PLACE })
+      expect(res.statusCode).toBe(404)
+      expect(res.json()).toEqual({ error: 'NotFound', message: 'Place not found' })
+      expect(r2.copyObject).not.toHaveBeenCalled()
+      expect(prisma.photo.create).not.toHaveBeenCalled()
+    })
+
+    it('accepts a photo of a verified café', async () => {
+      prisma.place.findUnique.mockResolvedValue({
+        id: PLACE,
+        status: 'APPROVED',
+        category: 'CAFE',
+        verifiedAt: new Date(),
+        submittedById: null,
+      })
+      const res = await confirm({ key: KEY_A, placeId: PLACE })
+      expect(res.statusCode).toBe(201)
+    })
 
     it('lets a parent add a photo to the place they submitted, before approval', async () => {
       prisma.place.findUnique.mockResolvedValue({ status: 'PENDING', submittedById: USER_A })

@@ -2,6 +2,13 @@ import { FastifyInstance } from 'fastify'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { requireAuth, optionalAuth } from '../plugins/auth.js'
+import {
+  canSeePlace,
+  publicPlaceWhere,
+  visiblePlaceWhere,
+  withoutPrivateColumns,
+  VISIBILITY_SELECT,
+} from '../lib/place-visibility.js'
 import crypto from 'crypto'
 
 // Owners are shown by handle only. Their user id would be a join key: matched
@@ -17,13 +24,14 @@ const AddPlaceBody = z.object({
 
 export default async function listsRoutes(app: FastifyInstance) {
   // GET /api/lists/public
+  // The counts, like the lists themselves, only include places the public can see.
   app.get('/public', async () => {
     return app.prisma.list.findMany({
       where: { visibility: 'PUBLIC' },
       omit: { ownerId: true },
       include: {
         translations: true,
-        _count: { select: { listPlaces: true } },
+        _count: { select: { listPlaces: { where: { place: publicPlaceWhere } } } },
         owner: OWNER_SELECT,
       },
       take: 50,
@@ -34,7 +42,10 @@ export default async function listsRoutes(app: FastifyInstance) {
   app.get('/mine', { preHandler: requireAuth }, async (req) => {
     return app.prisma.list.findMany({
       where: { ownerId: req.session!.sub },
-      include: { translations: true, _count: { select: { listPlaces: true } } },
+      include: {
+        translations: true,
+        _count: { select: { listPlaces: { where: { place: visiblePlaceWhere(req.session) } } } },
+      },
     })
   })
 
@@ -48,14 +59,15 @@ export default async function listsRoutes(app: FastifyInstance) {
         translations: true,
         owner: OWNER_SELECT,
         listPlaces: {
-          // Explicit select: addedById is a user id, and the place row carries
-          // submittedById. Neither belongs in a list anyone with the link can read.
+          // Explicit select: addedById is a user id. The place row carries
+          // submittedById and verifiedAt, loaded for canSeePlace() and stripped
+          // below; verifiedById and updatedAt are never loaded.
           select: {
             id: true,
             note: true,
             position: true,
             createdAt: true,
-            place: { omit: { submittedById: true }, include: { translations: true } },
+            place: { omit: { verifiedById: true, updatedAt: true }, include: { translations: true } },
           },
           orderBy: { position: 'asc' },
         },
@@ -68,12 +80,15 @@ export default async function listsRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: 'Forbidden', message: 'This list is private' })
     }
 
-    // ownerId is loaded only for the check above. A place still awaiting
-    // moderation stays out of the list for everyone but the owner who added it.
+    // ownerId is loaded only for the check above. Each place follows the same rule
+    // as its own page: one the caller can't open (awaiting moderation, or an
+    // unverified café) stays out of the list, the owner's own view included.
     const { ownerId: _ownerId, listPlaces, ...rest } = list
     return {
       ...rest,
-      listPlaces: isOwner ? listPlaces : listPlaces.filter((lp) => lp.place.status === 'APPROVED'),
+      listPlaces: listPlaces
+        .filter((lp) => canSeePlace(lp.place, req.session))
+        .map((lp) => ({ ...lp, place: withoutPrivateColumns(lp.place) })),
     }
   })
 
@@ -118,16 +133,13 @@ export default async function listsRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: 'Forbidden', message: 'Not your list' })
     }
 
-    // Same visibility rule as GET /api/places/:id: an unmoderated place can only be
-    // listed by the parent who submitted it (or an admin), never discovered by id.
-    const place = await app.prisma.place.findUnique({
-      where: { id: placeId },
-      select: { status: true, submittedById: true },
-    })
-    const visible =
-      place !== null &&
-      (place.status === 'APPROVED' || session.role === 'ADMIN' || place.submittedById === session.sub)
-    if (!visible) return reply.status(404).send({ error: 'NotFound', message: 'Place not found' })
+    // Same visibility rule as GET /api/places/:id: a place the public can't see can
+    // only be listed by the parent who submitted it (or an admin), never discovered
+    // by id.
+    const place = await app.prisma.place.findUnique({ where: { id: placeId }, select: VISIBILITY_SELECT })
+    if (!place || !canSeePlace(place, session)) {
+      return reply.status(404).send({ error: 'NotFound', message: 'Place not found' })
+    }
 
     try {
       const lp = await app.prisma.listPlace.create({

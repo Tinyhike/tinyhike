@@ -24,6 +24,9 @@ function placeRow(over: Record<string, unknown> = {}) {
   return {
     id: 'p1',
     status: 'APPROVED',
+    category: 'PLAYGROUND',
+    verifiedAt: null,
+    verifiedById: null,
     submittedById: 'u-submitter',
     lat: 51.92,
     lng: 4.48,
@@ -135,7 +138,13 @@ describe('GET /api/places', () => {
       omit: Record<string, boolean>
       include: { photos: unknown }
     }
-    expect(arg.omit).toEqual({ submittedById: true })
+    expect(arg.omit).toEqual({
+      submittedById: true,
+      verifiedById: true,
+      verifiedAt: true,
+      // equal to the verification instant once a café is verified
+      updatedAt: true,
+    })
     expect(arg.include.photos).toEqual({ where: { status: 'APPROVED' }, take: 1, select: { id: true, r2Url: true } })
   })
 })
@@ -307,7 +316,13 @@ describe('GET /api/places/:id/reviews', () => {
   beforeEach(async () => {
     prisma = makePrismaMock()
     app = await buildApp({ prisma: asPrisma(prisma), logger: false })
-    prisma.place.findUnique.mockResolvedValue({ id: 'p1', status: 'APPROVED', submittedById: null })
+    prisma.place.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'APPROVED',
+      category: 'PLAYGROUND',
+      verifiedAt: null,
+      submittedById: null,
+    })
   })
   afterEach(async () => {
     await app.close()
@@ -407,22 +422,208 @@ describe('GET /api/places/:id/my-review', () => {
     expect(prisma.review.findFirst).not.toHaveBeenCalled()
   })
 
-  it("returns the caller's own written review, score and comment only", async () => {
-    prisma.review.findFirst.mockResolvedValueOnce({ score: 4, comment: 'Lovely' })
-    const res = await app.inject({ method: 'GET', url: '/api/places/p1/my-review', cookies: await cookiesFor('u1') })
+  describe('on a place the caller can see', () => {
+    beforeEach(() => {
+      prisma.place.findUnique.mockResolvedValue(placeRow())
+    })
 
-    expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ score: 4, comment: 'Lovely' })
-    const arg = prisma.review.findFirst.mock.calls[0][0] as { where: unknown; select: unknown }
-    expect(arg.where).toEqual({ placeId: 'p1', userId: 'u1', ...WRITTEN })
-    expect(arg.select).toEqual({ score: true, comment: true })
+    it("returns the caller's own written review, score and comment only", async () => {
+      prisma.review.findFirst.mockResolvedValueOnce({ score: 4, comment: 'Lovely' })
+      const res = await app.inject({ method: 'GET', url: '/api/places/p1/my-review', cookies: await cookiesFor('u1') })
+
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toEqual({ score: 4, comment: 'Lovely' })
+      const arg = prisma.review.findFirst.mock.calls[0][0] as { where: unknown; select: unknown }
+      expect(arg.where).toEqual({ placeId: 'p1', userId: 'u1', ...WRITTEN })
+      expect(arg.select).toEqual({ score: true, comment: true })
+    })
+
+    it('returns JSON null when the caller has not written one', async () => {
+      const res = await app.inject({ method: 'GET', url: '/api/places/p1/my-review', cookies: await cookiesFor('u1') })
+      expect(res.statusCode).toBe(200)
+      expect(res.headers['content-type']).toMatch(/application\/json/)
+      expect(res.json()).toBeNull()
+    })
   })
 
-  it('returns JSON null when the caller has not written one', async () => {
-    const res = await app.inject({ method: 'GET', url: '/api/places/p1/my-review', cookies: await cookiesFor('u1') })
+  it.each([
+    ['its submitter, on a pending proposal', placeRow({ status: 'PENDING', submittedById: 'u1' }), 'MEMBER'],
+    ['an admin, on an unverified café', placeRow({ category: 'CAFE' }), 'ADMIN'],
+  ])('answers %s', async (_label, row, role) => {
+    prisma.place.findUnique.mockResolvedValueOnce(row)
+    prisma.review.findFirst.mockResolvedValueOnce({ score: 3, comment: null })
+    const res = await app.inject({ method: 'GET', url: '/api/places/p1/my-review', cookies: await cookiesFor('u1', role) })
     expect(res.statusCode).toBe(200)
-    expect(res.headers['content-type']).toMatch(/application\/json/)
-    expect(res.json()).toBeNull()
+    expect(res.json()).toEqual({ score: 3, comment: null })
+  })
+
+  // It used to answer for any id: a hidden place's review would leak through it.
+  it.each([
+    ['an unknown place', null],
+    ['an unverified café', placeRow({ category: 'CAFE' })],
+    ["another parent's pending place", placeRow({ status: 'PENDING' })],
+  ])('is 404 for %s, without reading any review', async (_label, row) => {
+    prisma.place.findUnique.mockResolvedValueOnce(row)
+    const res = await app.inject({ method: 'GET', url: '/api/places/p1/my-review', cookies: await cookiesFor('u1') })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toMatchObject({ error: 'NotFound' })
+    expect(prisma.review.findFirst).not.toHaveBeenCalled()
+  })
+})
+
+const PUBLIC_WHERE = {
+  status: 'APPROVED',
+  OR: [{ category: { in: ['PLAYGROUND', 'PARK', 'PICNIC_SITE'] } }, { verifiedAt: { not: null } }],
+}
+
+describe('unverified cafés are hidden (decision of 26 Oct 2026)', () => {
+  let app: FastifyInstance
+  let prisma: PrismaMock
+
+  beforeEach(async () => {
+    prisma = makePrismaMock()
+    app = await buildApp({ prisma: asPrisma(prisma), logger: false })
+  })
+  afterEach(async () => {
+    await app.close()
+  })
+
+  it('the map asks only for public places: playgrounds, parks, picnic sites, or verified', async () => {
+    await app.inject({ method: 'GET', url: '/api/places?bbox=4.4,51.8,4.6,51.95' })
+    const arg = prisma.place.findMany.mock.calls[0][0] as { where: Record<string, unknown> }
+    expect(arg.where).toEqual({
+      ...PUBLIC_WHERE,
+      lat: { gte: 51.8, lte: 51.95 },
+      lng: { gte: 4.4, lte: 4.6 },
+    })
+  })
+
+  it('X-Total-Count counts with the very same filter as the list', async () => {
+    prisma.place.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }])
+    prisma.place.count.mockResolvedValueOnce(1012)
+    const res = await app.inject({ method: 'GET', url: '/api/places?limit=1' })
+    expect(res.headers['x-total-count']).toBe('1012')
+    const listWhere = (prisma.place.findMany.mock.calls[0][0] as { where: unknown }).where
+    expect(prisma.place.count).toHaveBeenCalledWith({ where: listWhere })
+    expect(listWhere).toEqual(PUBLIC_WHERE)
+  })
+
+  describe('GET /api/places/:id', () => {
+    it.each([
+      ['an unverified café', { category: 'CAFE' }],
+      ['a place with no category', { category: null }],
+    ])('%s is 404 to a visitor and to a signed-in parent', async (_label, over) => {
+      prisma.place.findUnique.mockResolvedValue(placeRow(over))
+      expect((await app.inject({ method: 'GET', url: '/api/places/p1' })).statusCode).toBe(404)
+      const member = await app.inject({ method: 'GET', url: '/api/places/p1', cookies: await cookiesFor('u-stranger') })
+      expect(member.statusCode).toBe(404)
+      expect(member.json()).toEqual({ error: 'NotFound', message: 'Place not found' })
+      expect(prisma.review.count).not.toHaveBeenCalled()
+    })
+
+    it('an unverified café is visible to an admin, who verifies it', async () => {
+      prisma.place.findUnique.mockResolvedValueOnce(placeRow({ category: 'CAFE' }))
+      const res = await app.inject({ method: 'GET', url: '/api/places/p1', cookies: await cookiesFor('u-admin', 'ADMIN') })
+      expect(res.statusCode).toBe(200)
+    })
+
+    it('a verified café is public, and its verification date and author stay private', async () => {
+      // updatedAt is stamped by the same write as verifiedAt.
+      const at = new Date('2026-10-26T10:00:00Z')
+      prisma.place.findUnique.mockResolvedValueOnce(
+        placeRow({ category: 'CAFE', verifiedAt: at, updatedAt: at, verifiedById: 'u-verifier' }),
+      )
+      const res = await app.inject({ method: 'GET', url: '/api/places/p1' })
+      expect(res.statusCode).toBe(200)
+      const body = res.json()
+      expect(body.category).toBe('CAFE')
+      expect(body).not.toHaveProperty('verifiedAt')
+      expect(body).not.toHaveProperty('verifiedById')
+      expect(body).not.toHaveProperty('submittedById')
+      expect(body).not.toHaveProperty('updatedAt')
+      expect(res.body).not.toContain('u-verifier')
+      expect(res.body).not.toContain('2026-10-26T10:00:00')
+    })
+
+    it.each(['PLAYGROUND', 'PARK', 'PICNIC_SITE'])('an approved %s is public without verification', async (category) => {
+      prisma.place.findUnique.mockResolvedValueOnce(placeRow({ category }))
+      expect((await app.inject({ method: 'GET', url: '/api/places/p1' })).statusCode).toBe(200)
+    })
+
+    it('a verified place still needs to be approved', async () => {
+      prisma.place.findUnique.mockResolvedValueOnce(
+        placeRow({ status: 'PENDING', category: 'CAFE', verifiedAt: new Date() }),
+      )
+      expect((await app.inject({ method: 'GET', url: '/api/places/p1' })).statusCode).toBe(404)
+    })
+  })
+
+  it('GET /api/places/:id/reviews is 404 on an unverified café', async () => {
+    prisma.place.findUnique.mockResolvedValueOnce({ id: 'p1', status: 'APPROVED', category: 'CAFE', verifiedAt: null, submittedById: null })
+    const res = await app.inject({ method: 'GET', url: '/api/places/p1/reviews' })
+    expect(res.statusCode).toBe(404)
+    expect(prisma.review.findMany).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['a tag vote', { tagsConfirmed: ['hasToilets'] }],
+    ['a rating', { score: 4 }],
+  ])('POST /api/places/:id/reviews refuses %s on an unverified café', async (_label, payload) => {
+    prisma.place.findUnique.mockResolvedValueOnce({ id: 'p1', status: 'APPROVED', category: 'CAFE', verifiedAt: null, submittedById: null })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/places/p1/reviews',
+      payload,
+      cookies: await cookiesFor('u1'),
+    })
+    expect(res.statusCode).toBe(404)
+    expect(prisma.review.create).not.toHaveBeenCalled()
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('every place check selects only what the rule needs', async () => {
+    prisma.place.findUnique.mockResolvedValueOnce(null)
+    await app.inject({ method: 'GET', url: '/api/places/p1/reviews' })
+    expect(prisma.place.findUnique).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      select: { id: true, status: true, category: true, verifiedAt: true, submittedById: true },
+    })
+  })
+})
+
+describe('POST /api/places (a parent proposes a place)', () => {
+  let app: FastifyInstance
+  let prisma: PrismaMock
+
+  beforeEach(async () => {
+    prisma = makePrismaMock()
+    app = await buildApp({ prisma: asPrisma(prisma), logger: false })
+  })
+  afterEach(async () => {
+    await app.close()
+  })
+
+  const propose = async (payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: '/api/places', payload, cookies: await cookiesFor('u1') })
+
+  it('stores the category the parent gives, still PENDING and unverified', async () => {
+    const res = await propose({ lat: 51.92, lng: 4.48, name: 'Speeltuin', category: 'PLAYGROUND' })
+    expect(res.statusCode).toBe(201)
+    const arg = prisma.place.create.mock.calls[0][0] as { data: Record<string, unknown> }
+    expect(arg.data).toMatchObject({ category: 'PLAYGROUND', status: 'PENDING', submittedById: 'u1' })
+    expect(arg.data).not.toHaveProperty('verifiedAt')
+  })
+
+  it('leaves the category unknown when none is given', async () => {
+    await propose({ lat: 51.92, lng: 4.48, name: 'Somewhere' })
+    const arg = prisma.place.create.mock.calls[0][0] as { data: Record<string, unknown> }
+    expect(arg.data.category).toBeUndefined()
+  })
+
+  it('rejects a category that does not exist', async () => {
+    const res = await propose({ lat: 51.92, lng: 4.48, name: 'Bar', category: 'BAR' })
+    expect(res.statusCode).toBe(400)
+    expect(prisma.place.create).not.toHaveBeenCalled()
   })
 })
 

@@ -17,6 +17,7 @@ import {
   headObject,
   deleteObject,
 } from '../lib/r2.js'
+import { canSeePlace, VISIBILITY_SELECT } from '../lib/place-visibility.js'
 
 /**
  * Photo upload, in three steps, none of which ever exposes unmoderated bytes:
@@ -116,10 +117,11 @@ function perUserLimit(max: number) {
 }
 
 /**
- * Whether the caller may attach a photo to a place or route: the same rule as
- * canSee() in routes/places.ts. An APPROVED one is public; before approval, or
- * after a rejection, only its submitter and the moderators may contribute to it.
- * Everyone else gets the 404 every other endpoint gives for it.
+ * Whether the caller may attach a photo to a route. An APPROVED one is public;
+ * before approval, or after a rejection, only its author and the moderators may
+ * contribute to it. Everyone else gets the 404 every other endpoint gives for it.
+ * Places follow canSeePlace() (lib/place-visibility.ts), which also hides
+ * unverified cafés.
  */
 function canContribute(
   target: { status: string; ownerId: string | null },
@@ -222,11 +224,8 @@ export default async function photosRoutes(app: FastifyInstance) {
       // A dangling foreign key is the caller's mistake: 404 rather than a Prisma 500.
       // So is a place or route the caller can't see: it answers 404 everywhere else.
       if (placeId) {
-        const place = await app.prisma.place.findUnique({
-          where: { id: placeId },
-          select: { status: true, submittedById: true },
-        })
-        if (!place || !canContribute({ status: place.status, ownerId: place.submittedById }, session)) {
+        const place = await app.prisma.place.findUnique({ where: { id: placeId }, select: VISIBILITY_SELECT })
+        if (!place || !canSeePlace(place, session)) {
           return reply.status(404).send({ error: 'NotFound', message: 'Place not found' })
         }
       }

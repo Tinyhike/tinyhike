@@ -6,6 +6,8 @@
  * (existing ones), so the query and the mapping can't drift apart between them.
  */
 
+import type { PlaceCategory } from '@prisma/client'
+
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
 
 export interface OverpassElement {
@@ -125,6 +127,23 @@ export function kindOf(tags: Record<string, string> | undefined): PlaceKind | nu
   if (tags.amenity === 'cafe') return 'cafe'
   if (tags.tourism === 'picnic_site') return 'picnic_site'
   return null
+}
+
+const CATEGORY_FOR: Record<PlaceKind, PlaceCategory> = {
+  playground: 'PLAYGROUND',
+  park: 'PARK',
+  cafe: 'CAFE',
+  picnic_site: 'PICNIC_SITE',
+}
+
+/**
+ * The Place.category for an element: the same precedence as kindOf, so a
+ * playground mapped inside a café's grounds is a playground. null for an element
+ * that matches none of the four, which keeps the place hidden (lib/place-visibility.ts).
+ */
+export function categoryOf(tags: Record<string, string> | undefined): PlaceCategory | null {
+  const kind = kindOf(tags)
+  return kind ? CATEGORY_FOR[kind] : null
 }
 
 /**
@@ -248,4 +267,19 @@ export function onlyMissing<T extends Record<string, unknown>>(mapped: StrollerT
     if (current[key] === null || current[key] === undefined) out[key] = value
   }
   return out
+}
+
+/**
+ * What the backfill writes to one place: the stroller tags it is missing, plus its
+ * category when it has none. Like the tags, a category already set is never
+ * replaced, and an element that matches no category leaves it null.
+ */
+export function backfillUpdate(
+  tags: Record<string, string> | undefined,
+  place: Record<string, unknown> & { category: PlaceCategory | null },
+): StrollerTags & { category?: PlaceCategory } {
+  const data: StrollerTags & { category?: PlaceCategory } = onlyMissing(mapOsmTags(tags), place)
+  const category = categoryOf(tags)
+  if (place.category === null && category) data.category = category
+  return data
 }

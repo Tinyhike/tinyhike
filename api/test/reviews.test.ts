@@ -46,7 +46,13 @@ describe('POST /api/places/:id/reviews', () => {
 
   beforeEach(async () => {
     prisma = makePrismaMock()
-    prisma.place.findUnique.mockResolvedValue({ id: 'p1', status: 'APPROVED', submittedById: null })
+    prisma.place.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'APPROVED',
+      category: 'PLAYGROUND',
+      verifiedAt: null,
+      submittedById: null,
+    })
     prisma.review.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => echoRow(data))
     prisma.review.update.mockImplementation(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) =>
       echoRow(data, where.id),

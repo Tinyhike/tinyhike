@@ -22,6 +22,7 @@ import {
   elementCoords,
   translationsFor,
   kindOf,
+  categoryOf,
   DEFAULT_BBOX,
 } from '../lib/osm.js'
 
@@ -70,6 +71,9 @@ async function seed() {
         osmId,
         source: 'OSM',
         status: 'APPROVED', // OSM is a trusted source — auto-approve (moderation decision, see ROADMAP)
+        // Approved is not public: a café stays hidden until an admin verifies it
+        // (lib/place-visibility.ts).
+        category: categoryOf(el.tags),
         // The original seeder asked for `out center tags` and then read only `name`,
         // throwing away every attribute OSM sent. That's why the first 381 places
         // had all eleven stroller booleans null.

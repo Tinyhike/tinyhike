@@ -19,6 +19,7 @@ model User {
 
   magicTokens    MagicToken[]
   places         Place[]
+  verifiedPlaces Place[]            @relation("verifiedBy")
   tracks         Track[]
   routes         Route[]
   photos         Photo[]
@@ -90,6 +91,21 @@ model Place {
   hasPlayCorner           Boolean?
   isQuiet                 Boolean?
 
+  // What kind of place this is, from its OSM tag (lib/osm.ts categoryOf). null =
+  // unknown: a parent's proposal, or an OSM element that no longer matches any
+  // category. Public visibility is an allowlist of categories, so null stays hidden
+  // (src/lib/place-visibility.ts).
+  category PlaceCategory?
+
+  // Set when an admin has visited the place and recorded the four verification
+  // points (src/services/place-verification.ts). A verified place is public
+  // whatever its category: that is how a café becomes visible. Independent of
+  // status, which moderates a parent's proposal. Neither field is ever sent in a
+  // public response.
+  verifiedAt   DateTime?
+  verifiedById String?
+  verifiedBy   User?     @relation("verifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
+
   submittedById String?
   submittedBy   User?   @relation(fields: [submittedById], references: [id])
 
@@ -106,6 +122,13 @@ enum PlaceStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum PlaceCategory {
+  PLAYGROUND
+  PARK
+  PICNIC_SITE
+  CAFE
 }
 
 enum PlaceSource {
