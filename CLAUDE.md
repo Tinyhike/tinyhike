@@ -2,7 +2,7 @@
 
 > **For agents (Claude Code, claude.ai, others).** Read this first, every session, before touching any code, command, or commit. This file reflects the **actual state** of the project, not the original aspirations.
 
-Last updated: 14 September 2026 — after the first production HTTPS deploy.
+Last updated: 23 October 2026 — after the reviews + photo-upload batch (accounts for ratings, private photo staging, moderation).
 
 ---
 
@@ -29,20 +29,37 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
   - **nginx 1.28.3** terminates TLS with a **Cloudflare Origin cert** (`/etc/ssl/cloudflare/tinyhike.{pem,key}`, `*.tinyhike.com`, expires 2041), serves `web/dist` with SPA fallback, and proxies `/api/*` to `127.0.0.1:3000`
   - nginx resolves the **real visitor IP** from `CF-Connecting-IP`, and returns **403 to any request that didn't come through Cloudflare**
   - Config lives in git: `ops/systemd/tinyhike-api.service`, `ops/nginx/tinyhike.conf`, `ops/nginx/cloudflare-*.conf` (regenerate with `ops/scripts/update-cloudflare-ips.sh`)
-- **API Fastify 5** — all routes loaded (auth, places, routes, photos, lists, admin), helmet, per-IP rate limiting, `trustProxy`, global error handler. Dev: `cd api && pnpm dev` on :3000
+- **API Fastify 5** — all routes loaded (auth, places, routes, photos, lists, admin), helmet, rate limiting, `trustProxy`, global error handler. Dev: `cd api && pnpm dev` on :3000
+  - **Rate-limit keys fold IPv6 to its /64** — every `keyGenerator` goes through `clientKey(req.ip)` (`api/src/lib/client-key.ts`): IPv4 as-is, IPv4-mapped IPv6 back to IPv4, any other IPv6 cut to its /64. One machine owns a whole /64, so the full address would let it rotate past every limit. The photo routes key per account instead (`user:<id>`, hook `preHandler` so it runs after `requireAuth`).
+  - **Session cookie is `__Host-session`** (HttpOnly, Secure, SameSite=Lax, Path=/, no Domain; `SESSION_COOKIE` / `SESSION_COOKIE_OPTIONS` in `api/src/plugins/auth.ts`). The prefix stops a sibling subdomain (`photos.` serves user content) from planting or shadowing a session. Clearing it needs the same Secure + Path=/ attributes, or browsers ignore the clear. Three guards: `requireAuth` (401), `optionalAuth` (attaches the session when valid, never replies), `requireAdmin`.
+  - **Magic link returns you where you were** — `POST /api/auth/magic` takes an optional `next` (allowlist `^/(places/<id>|profile|lists)?$`, checked again on `/verify`); an invalid `next` falls back to `/`, never an error.
+  - **Place visibility and privacy** — `GET /api/places/:id` is 404 unless the place is APPROVED or the caller submitted it (or is ADMIN). Public payloads never carry user ids (`submittedById`, `uploadedById`, a review's `userId`, a list owner's id) or moderation notes.
+- **Reviews: stars and comments need an account** — one written review (score and/or comment) per parent per place; posting again updates it (200) instead of adding one (201). Enforced in the DB by the partial unique index `Review_one_written_per_user_per_place` (migration `20261023120000_photo_staging_and_review_dedupe`, see pitfall 22). Reviews are **displayed anonymously** ("Un parent"): no UI sets a handle yet, so the web always sends `anonymous: true`. The place detail carries the first 20 written reviews, `reviewCount`, `scoreAvg`, `scoreCount`, `voteCount` and `nextCursor`; `GET /api/places/:id/reviews?cursor=` pages the rest, `GET /api/places/:id/my-review` prefills the form. `POST /api/places/:id/reviews` is limited to 30/min per client, body 8 KB, comment 500 chars.
+- **Amenity tag votes stay one tap and anonymous** — the "À confirmer" yes/no chips need no account. A vote is a tag-only Review row; `userId` is stored when the voter happens to be signed in. Tags are checked against `TAG_KEYS` (`api/src/lib/tags.ts`, the 19 keys, held in sync with `web/src/lib/tags.ts` by `api/test/tags.test.ts`). Tag-only rows never count as reviews and never push written reviews out of the list.
+- **Photo pipeline built end to end, OFF in production until the one-time setup** (`DEPLOY.md` §3c). Unmoderated bytes are never publicly reachable:
+  - `POST /api/photos/presign` (signed in) → a 120 s PUT URL into the **private staging bucket** (`R2_STAGING_BUCKET`) at `uploads/<userId>/<uuid>.<ext>`, with Content-Type **and** Content-Length signed. JPEG/PNG/WebP, 10 MB max, 20 PENDING photos per account max.
+  - The browser PUTs straight to R2. `POST /api/photos/confirm` copies the upload to `confirmed/<userId>/<uuid>.<ext>` (a key no client can write), checks the copy's type and size, deletes the upload and creates a PENDING `Photo` row with `r2Url: null`. Idempotent.
+  - **Approval** re-encodes with sharp (`rotate()`, fit inside 2048×2048, JPEG q82 mozjpeg, `limitInputPixels` 50M). That strips EXIF/GPS and proves the file is a real image. The result goes to the **public** bucket at `p/<photoId>.jpg`, cached `immutable` for a year; only then does the row get an `r2Url`. **Rejection** deletes the bytes. Rejecting an approved photo is a takedown: purge its URL from the Cloudflare cache by hand.
+  - Moderation runs from the shell, `pnpm photos:moderate list|approve|reject`, or through `GET`/`PATCH /api/admin/photos` (admin). Both share `api/src/services/photo-moderation.ts`.
+  - Without `R2_STAGING_BUCKET`, uploads fail closed: presign/confirm answer 503 and `GET /api/photos/config` says `{ enabled: false }`, so the web hides "Add a photo".
 - **Web Vite 5 + React 18 + Mapbox GL 3** — clustered Rotterdam map. Dev: `cd web && pnpm dev` on :5173, proxies `/api/*` to :3000
 - **381 POIs seeded from OSM** and enriched by Claude into nl/fr/en (1143 translations). `/api/places?bbox=...` serves them over HTTPS
-- **Vitest** — 17 tests green via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens)
+- **Vitest** — 395 tests green in 11 files via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens). Prisma is mocked (`api/test/helpers.ts`), R2 is `vi.mock`ed: no test touches the network or the DB
 - **Magic-link auth works end to end in production** (verified 14 Sep 2026): email delivered by Resend, `/api/auth/verify` hit on the web origin, 302, session cookie usable by the app
 - **Web app has a real shell** — tab bar (Carte/Listes/Profil), place detail as a sheet over a still-mounted map, loading/error states everywhere, interface in nl/fr/en with a switcher, bright toy-box identity (see `DESIGN.md`), generated PWA icons
+  - The place sheet carries the amenities (19 tri-state tags with one-tap votes), the rating header + reviews + review form, and "Add a photo" (re-encoded on the device, PUT with progress, cancel, retry).
+  - Every session gate reads one `useMe()` hook (`web/src/lib/session.ts`): `pending` / `signedIn` / `signedOut` / `unknown`. `unknown` (a 502, a Cloudflare challenge, offline) shows a retry line, never a sign-in prompt. Logout, and a 401 from the review or photo calls, flip it with `markSignedOut()` (pitfall 23).
+  - User-facing errors always come from an i18n key (`web/src/lib/errors.ts`), never from the server's English `message`. An unsent review draft is kept per place in `localStorage` for a day, so it survives the magic-link round trip.
 - **Git repo**: `https://github.com/Tinyhike/tinyhike` (public, MIT, branch `main`), cloned at `/srv/tinyhike/`
-- **External services configured**: Resend (email), Mapbox (tiles, token restricted to `tinyhike.com` / `app.tinyhike.com` / `localhost:5173`), Cloudflare R2 (bucket `tinyhike-photos`, custom domain `photos.tinyhike.com`), Cloudflare Email Routing (`hello@`, `security@`, `conduct@` → Gmail)
+- **External services configured**: Resend (email), Mapbox (tiles, token restricted to `tinyhike.com` / `app.tinyhike.com` / `localhost:5173`), Cloudflare R2 (public bucket `tinyhike-photos`, custom domain `photos.tinyhike.com`; private staging bucket `tinyhike-photos-staging` still to create, see `DEPLOY.md` §3c), Cloudflare Email Routing (`hello@`, `security@`, `conduct@` → Gmail)
 - **DNS + SSL**: `tinyhike.com` (+ `app`, `api`, `photos`, `www`) and `tinyhike.app` (redirect 301) live on Cloudflare, proxied 🟠, SSL Full strict
 
 ### ⏳ What's not done yet
-- **No photo upload UI** — the backend is rebuilt and tested (presign → upload → confirm, with R2 existence verified before any row is written), but nothing in `web/` calls it yet
+- **Photo uploads are off in production** until Jerome does the one-time Cloudflare setup in `DEPLOY.md` §3c: create the private staging bucket, set its CORS and its `uploads/` lifecycle rule, widen the R2 token to both buckets, set `R2_STAGING_BUCKET`. The code ships dark: the web hides the button until then.
+- **No admin UI yet (CLI only)** — photos are moderated with `pnpm photos:moderate` on the VPS (or the admin-only `/api/admin/photos` routes), places with `PATCH /api/admin/places/:id`. No Claude vision auto-moderation either: every photo waits for a human.
+- **No way to set a handle** — `User.handle` has no writer, so every review shows as "Un parent". Signed reviews need a product decision first (handles vs first names, opt-in toggle).
 - **Pending kernel reboot** — running `7.0.0-15-generic`, installed is `7.0.0-31-generic`. systemd brings everything back up, so a reboot is safe.
-- **No design pass** — visual identity, "stroller score", place-card icons, a11y all still untouched
+- **No design pass yet** for the "stroller score" and place-card icons (the identity and the a11y floor are in `DESIGN.md`)
 - **`marketing/` not deployed** — apex and `www` have no origin server block yet
 - **No CI** — `pnpm test` runs locally only; `main` is unprotected
 - **`GET /api/places` caps at 200** results with no pagination
@@ -99,25 +116,37 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
 ├── LICENSE                     # MIT
 ├── api/
 │   ├── .env -> ../.env         # symlink to root .env (Prisma reads from here)
-│   ├── package.json            # scripts: dev, build, start, db:generate, db:migrate, db:studio, enrich:pending, seed:osm
+│   ├── package.json            # scripts: dev, build, start, test, db:generate, db:migrate (= prisma migrate deploy), db:studio,
+│   │                           #          enrich:pending, seed:osm, backfill:osm-tags, photos:moderate
 │   ├── tsconfig.json
 │   ├── prisma/
-│   │   ├── schema.prisma       # 12 models, source of truth for DB
+│   │   ├── schema.prisma       # 12 models, source of truth for DB (except the partial index, pitfall 22)
 │   │   └── migrations/         # versioned migrations, run via prisma migrate deploy in prod
 │   ├── src/
-│   │   ├── index.ts            # Fastify entrypoint, registers all routes
+│   │   ├── app.ts              # buildApp(): plugins, rate limit, routes. Tests build the app from here
+│   │   ├── index.ts            # Fastify entrypoint, only listens
 │   │   ├── plugins/
-│   │   │   └── auth.ts         # JWT cookie middleware
+│   │   │   └── auth.ts         # __Host-session cookie, requireAuth / optionalAuth / requireAdmin
+│   │   ├── lib/
+│   │   │   ├── client-key.ts   # rate-limit key: IPv4 as-is, IPv6 cut to its /64
+│   │   │   ├── osm.ts          # Overpass query + OSM tags → stroller booleans (shared by the OSM jobs)
+│   │   │   ├── r2.ts           # the only S3 client: staging + public buckets, presign, copy, head, get, put
+│   │   │   └── tags.ts         # TAG_KEYS, the 19 amenity tags (mirrors web/src/lib/tags.ts)
+│   │   ├── services/
+│   │   │   └── photo-moderation.ts  # list / approve (sharp re-encode → public bucket) / reject / purge-legacy
 │   │   ├── routes/
-│   │   │   ├── auth.ts         # magic-link send, verify, me, logout
-│   │   │   ├── places.ts       # GET (bbox + locale), GET detail, POST, POST reviews
+│   │   │   ├── auth.ts         # magic-link send (with `next`), verify, me, logout
+│   │   │   ├── places.ts       # GET (bbox + locale), GET detail, POST, reviews: list, my-review, post (upsert)
 │   │   │   ├── routes.ts       # routes CRUD
-│   │   │   ├── photos.ts       # presigned upload to R2 + moderation queue
+│   │   │   ├── photos.ts       # config, presign into private staging, confirm → PENDING row
 │   │   │   ├── lists.ts        # Mapstr-style lists CRUD
-│   │   │   └── admin.ts        # stats, moderation (approve/reject), seed bulk
+│   │   │   └── admin.ts        # stats, place moderation, photo moderation (list, approve/reject), seed bulk
 │   │   └── jobs/
 │   │       ├── seed-osm.ts     # Overpass API → Place INSERT (Rotterdam bbox default)
-│   │       └── enrich.ts       # Claude Sonnet 4.6 → PlaceTranslation (nl/fr/en)
+│   │       ├── backfill-osm-tags.ts  # fill null stroller tags on already-seeded places from OSM
+│   │       ├── enrich.ts       # Claude Sonnet 4.6 → PlaceTranslation (nl/fr/en)
+│   │       └── moderate-photos.ts    # pnpm photos:moderate list | approve | reject | purge-legacy
+│   ├── test/                   # Vitest: mocked Prisma (helpers.ts), R2 mocked, never the network
 │   └── Dockerfile              # not used yet, kept for future Docker setup
 ├── web/
 │   ├── .env                    # VITE_API_URL (empty, uses Vite proxy) + VITE_MAPBOX_TOKEN
@@ -131,14 +160,24 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
 │   └── src/
 │       ├── main.tsx
 │       ├── App.tsx             # router root
-│       ├── index.css
-│       ├── lib/api.ts          # fetch wrapper with credentials, reads VITE_API_URL
+│       ├── index.css           # component styles (tokens live in styles/tokens.css, see DESIGN.md)
+│       ├── lib/
+│       │   ├── api.ts          # fetch wrapper with credentials, reads VITE_API_URL, throws ApiError
+│       │   ├── errors.ts       # ApiError → i18n key (user-facing text never comes from the server)
+│       │   ├── i18n.tsx        # nl/fr/en strings + provider
+│       │   ├── next-path.ts    # sign-in return path allowlist (same regex as api/src/routes/auth.ts)
+│       │   ├── review-draft.ts # unsent review kept per place in localStorage for a day
+│       │   ├── session.ts      # useMe() + markSignedOut(): the one session gate
+│       │   └── tags.ts         # the 19 amenity tags, groups and order
+│       ├── components/
+│       │   ├── PlaceSheet.tsx  # place detail as a bottom sheet over the map
+│       │   ├── PlaceAmenities.tsx, PlaceReviews.tsx, PhotoUpload.tsx, SessionRetry.tsx
+│       │   └── AppLayout.tsx   # tab bar
 │       └── pages/
 │           ├── MapPage.tsx     # Mapbox + bbox-driven /api/places fetch
-│           ├── AuthPage.tsx    # magic-link form
-│           ├── PlacePage.tsx   # place detail + photos
-│           ├── ListsPage.tsx   # (probably stub — to audit)
-│           └── ProfilePage.tsx # (probably stub — to audit)
+│           ├── AuthPage.tsx    # magic-link form (carries `next`)
+│           ├── ListsPage.tsx
+│           └── ProfilePage.tsx # account + language switcher + logout
 ├── marketing/
 │   ├── index.html              # static landing page, Dutch
 │   ├── nginx.conf
@@ -169,8 +208,10 @@ MAPBOX_PUBLIC_TOKEN   # pk.eyJ1... (also in web/.env as VITE_MAPBOX_TOKEN)
 R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY
-R2_BUCKET             # tinyhike-photos
-R2_PUBLIC_URL         # https://photos.tinyhike.com
+R2_BUCKET             # tinyhike-photos (PUBLIC: approved, re-encoded photos only)
+R2_STAGING_BUCKET     # tinyhike-photos-staging (PRIVATE: no custom domain, public access off).
+                      # Unset, empty or equal to R2_BUCKET = photo uploads disabled (fail closed).
+R2_PUBLIC_URL         # https://photos.tinyhike.com (absolute https URL; approvals refuse to run without it)
 R2_S3_ENDPOINT        # https://<account-id>.r2.cloudflarestorage.com
 TELEGRAM_BOT_TOKEN    # shared with OpenClaw on Hostinger
 TELEGRAM_USER_ID      # 7581563177
@@ -233,8 +274,14 @@ cd /srv/tinyhike/api && pnpm dev    # tsx watch auto-restarts on file save
 # Prisma after schema change
 cd /srv/tinyhike/api
 npx prisma format
-npx prisma migrate dev --name describe_change_briefly
+npx prisma migrate dev --name describe_change_briefly   # if it reports drift and offers a reset: answer NO (pitfall 22)
 npx prisma generate
+
+# Moderate photos (until the admin UI exists). A PENDING photo's view URL is a 10-min signed link.
+cd /srv/tinyhike/api
+pnpm photos:moderate list                  # PENDING queue, oldest first (also: list APPROVED / list REJECTED)
+pnpm photos:moderate approve <photoId>     # re-encode → public bucket, prints the public URL
+pnpm photos:moderate reject <photoId> [note...]   # deletes the bytes; on an APPROVED photo it prints a URL to purge
 
 # Apply PostGIS triggers (only after a fresh migrate that touched Place or Route)
 sudo -u postgres psql -d tinyhike -f /srv/tinyhike/ops/scripts/postgis_setup.sql
@@ -309,6 +356,18 @@ These are real bugs we hit. Reading this list saves 30 min each time.
 
 17. **Cloudflare Origin cert gotchas** — generate it in the **`tinyhike.com`** zone (not `tinyhike.app`, which is only a 301 redirect), list **both** `tinyhike.com` and `*.tinyhike.com` (the wildcard doesn't cover the apex), and use the "Click to copy" button: a mouse selection silently drops the `-----BEGIN/END-----` lines and OpenSSL then refuses the file. The private key is shown once — Bitwarden it immediately.
 
+18. **AWS SDK v3 ≥ 3.729 breaks presigned PUTs to R2** — its default (`requestChecksumCalculation: 'WHEN_SUPPORTED'`) adds a flexible checksum to every PutObject. A presigner can't see the body the browser will send, so it signs the CRC32 of an **empty** body (`x-amz-checksum-crc32=AAAAAA==`) into the URL, and R2 rejects every real upload with a checksum mismatch. The S3Client in `api/src/lib/r2.ts` sets `requestChecksumCalculation` and `responseChecksumValidation` to `'WHEN_REQUIRED'`. Any new S3 client needs the same.
+
+19. **A presigned URL signs only `host` unless you pass `signableHeaders`** — setting `ContentType` and `ContentLength` on the `PutObjectCommand` constrains nothing by default: whoever holds the URL can PUT `text/html`, or a multi-GB body, behind a "10 MB JPEG" check. `presignPut()` passes `signableHeaders: new Set(['content-type', 'content-length'])`. Check `X-Amz-SignedHeaders` in a generated URL. The client must then send exactly that Content-Type, with a body of exactly the declared size.
+
+20. **An R2 custom domain serves the WHOLE bucket** — there is no private prefix: `photos.tinyhike.com/<key>` answers for every object in `tinyhike-photos`. Before 23 Oct 2026 uploads went into that bucket under `uploads/`, so each one was public (raw, EXIF included) as soon as the PUT finished, whatever moderation said. Unmoderated bytes need a **separate bucket** with no custom domain and r2.dev access off (`R2_STAGING_BUCKET`). The public bucket only ever receives JPEGs the API re-encoded itself.
+
+21. **Bucket CORS and lifecycle rules need an Admin token** — `PutBucketCors` and lifecycle configuration are bucket-level calls, refused (AccessDenied) to an "Object Read & Write" token. Don't widen the API's token to Admin so a script can set them. An always-on process holding an account-wide admin key can delete buckets or switch public access on, and a leaked `.env` would expose all of R2. Set CORS and lifecycle in the dashboard (`DEPLOY.md` §3c) and keep `R2_ACCESS_KEY_ID` at Object Read & Write on the two buckets.
+
+22. **The partial unique index on `Review` is invisible to Prisma** — `Review_one_written_per_user_per_place` (`… WHERE "userId" IS NOT NULL AND ("score" IS NOT NULL OR "comment" IS NOT NULL)`) is what enforces "one written review per parent per place". Prisma's schema language can't express a partial index, so it lives only in migration `20261023120000_photo_staging_and_review_dedupe`, and Prisma doesn't know it exists. `prisma migrate dev` may report it as drift and offer a reset, or generate a migration that drops it. **Never accept a reset** (it wipes the database). Read every generated `migration.sql` before applying it (`--create-only`), and delete any `DROP INDEX "Review_one_written_per_user_per_place"`: dropping it silently re-opens rating stuffing. The reviews route relies on it, retrying a concurrent duplicate insert (P2002) as an update. Same family as pitfall 5.
+
+23. **TanStack Query v5 keeps the old data when a refetch fails** — if the `['me']` query threw on a 401, the cached user would stay on screen and every session gate would stay open. A parent whose session expired would keep seeing the review form until the post failed. `web/src/lib/session.ts` follows two rules. The query function resolves `null` for 401/404, because signed out is data, not an error. And whatever learns the session is gone calls `markSignedOut()`, which does `setQueryData(['me'], null)` at once. Invalidating `['me']` is not enough: the stale user stays until a refetch succeeds.
+
 ---
 
 ## Code style
@@ -317,7 +376,7 @@ These are real bugs we hit. Reading this list saves 30 min each time.
 - **Fastify schema validation** on every route — Zod or JSON Schema. Reject requests with malformed input before they hit Prisma.
 - **Prisma for all DB access**, no raw SQL in route handlers. The only exception: PostGIS spatial queries via `prisma.$queryRaw`, with a comment explaining why.
 - **ESM imports with `.js` extension** in source code even though files are `.ts`. This is the Node ESM convention with `tsx`/native ESM, and the scaffold follows it. Don't "fix" it.
-- **One concern per file.** Route handlers stay thin; logic in `src/services/*.ts` (create the folder when needed).
+- **One concern per file.** Route handlers stay thin; logic in `src/services/*.ts` (e.g. `photo-moderation.ts`, shared by the admin routes and the CLI).
 - **Logs are structured** (Pino default in Fastify). Use `request.log.info({ ... })`, never `console.log`.
 - **Errors** — throw with `fastify.httpErrors.badRequest('Reason')` (via `@fastify/sensible` if installed) or return a 4xx with a clear `{ error: 'Code', message: 'Human readable' }` body.
 
@@ -416,7 +475,7 @@ If you're picking up mid-task, look at recent git commits: `git log --oneline -2
 | Resend dashboard | https://resend.com/domains |
 | Mapbox tokens | https://account.mapbox.com/access-tokens |
 | Anthropic Console | https://console.anthropic.com (separate key for TinyHike) |
-| R2 bucket | https://dash.cloudflare.com (R2 → tinyhike-photos) |
+| R2 buckets | https://dash.cloudflare.com (R2 → tinyhike-photos, public; tinyhike-photos-staging, private) |
 
 ---
 

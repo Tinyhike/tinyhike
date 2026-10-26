@@ -1,8 +1,10 @@
 # TinyHike — Roadmap & To-Do
 
 > Living planning doc. Pairs with `CLAUDE.md` (source-of-truth state) and `DESIGN.md`
-> (visual system). Last updated: **14 September 2026** — after production deploy,
-> auth verified, dataset rebuilt, and a product recentering session with Jerome.
+> (visual system). Last updated: **23 October 2026** — after the reviews +
+> photo-upload batch (accounts for ratings, private photo staging, moderation).
+> Previous update: 14 September 2026, after production deploy, auth verified,
+> dataset rebuilt, and a product recentering session with Jerome.
 
 ---
 
@@ -23,9 +25,50 @@ child in Rotterdam.
 |---|---|
 | Social | **Content sharing only** — public walks & lists, follow. No messaging, no social profiles. Stays "utility, not a social network". |
 | Route generation | **Not in the MVP.** Launch is places + reviews + user-added places. Routing (Mapbox Directions vs self-hosted OSRM) decided when traction justifies it. |
-| Tag schema | **Airbnb-style, pending Jerome's screenshot**: indoor tag set and outdoor tag set, shown by place type. Schema work waits for that reference. |
+| Tag schema | **Airbnb-style**: indoor and outdoor tag sets, shown by place type. **Done 14 Sep**: 19 tri-state tags in 3 groups, validated from `design/mockups/place-tags-mockup.html` (`c173764`). |
+
+### Decisions locked (23 Oct 2026, Jerome)
+| Question | Decision |
+|---|---|
+| Ratings & comments | **Need an account.** One written review per parent per place; posting again updates it. Still **displayed anonymously** ("Un parent"): no handle can be set yet, so the app never promises "sign with your name". |
+| Amenity tag votes | **One tap, anonymous, no account.** The voter's id is kept only when they happen to be signed in. |
+| Photos | **Unmoderated bytes are never publicly reachable.** Uploads go to a private staging bucket; a human approves; only then is a re-encoded, EXIF-free copy published. |
 
 ---
+
+## What the 23 October 2026 batch delivered
+
+- **Ratings and reviews, end to end.** The place sheet now has a rating header
+  (average, count), written reviews newest first with "Load more", and a star +
+  comment form that edits your own review when you already left one. Stars and
+  comments need an account, one review per parent per place (enforced by a
+  partial unique index in the DB). Amenity votes stay anonymous and no longer
+  push written reviews out of the list.
+- **Photo upload, end to end, shipped dark.** "Add a photo" on the place sheet
+  (re-encoded on the phone, progress, cancel, retry) → private staging bucket →
+  PENDING. Hidden until `R2_STAGING_BUCKET` is set, which waits on Jerome's
+  Cloudflare checklist (`DEPLOY.md` §3c).
+- **Photo moderation, first version.** Correction to the 14 Sep state below: there
+  was **no** photo moderation route then. The only moderation route was
+  `PATCH /api/admin/places/:id`, so an upload would have stayed PENDING forever,
+  while its bytes would already have been public at `photos.tinyhike.com`. Now:
+  `pnpm photos:moderate list|approve|reject` on the VPS, plus
+  `GET`/`PATCH /api/admin/photos`. Approval re-encodes with sharp (EXIF/GPS
+  stripped) into the public bucket. Rejection deletes the bytes; taking down an
+  approved photo also needs a manual Cloudflare cache purge. **No admin UI yet.**
+- **Security fixes** from a multi-agent review (30 defects):
+  - the `__Host-session` cookie, so no subdomain can plant a session;
+  - presigned uploads pinned to type and exact size;
+  - rate-limit keys that fold IPv6 to its /64;
+  - no user ids or moderation notes in public payloads;
+  - pending places answer 404 to everyone but their submitter.
+- **Sign-in brings you back** to the place you were on (`next`, allowlisted).
+- **Accessibility and i18n:**
+  - `--sun-deep` and `--mint-deep` darkened to pass AA;
+  - 44px tap targets and visible focus rings on every new control;
+  - singular/plural counts, and decimals and relative dates in the UI locale;
+  - every error message localized.
+- **395 Vitest tests green** (was 39).
 
 ## Where we are (14 September 2026)
 
@@ -46,24 +89,36 @@ child in Rotterdam.
   nl/fr/en interface with switcher, bright toy-box identity (`DESIGN.md`),
   generated PWA icons. 381 original places have nl/fr/en descriptions.
 - **API**: helmet, per-IP rate limits, error envelope, bbox+limit validation,
-  truncation headers, photo flow rebuilt (row only after verified R2 upload).
+  truncation headers, photo flow rebuilt (row only after verified R2 upload). No
+  photo moderation route yet, and uploads went straight into the public bucket
+  (both fixed 23 Oct, above).
 - **39 Vitest tests green.**
 
 ---
 
 ## Phase plan (reordered around the pitch)
 
-### Phase A — The contributive loop (next)
+### Phase A — The contributive loop (in progress)
 The pitch's core: rate, comment, correct, add. Order:
-1. **Place sheet, full version** — tags displayed Airbnb-style (awaiting Jerome's
-   screenshot for the tag design), rating, reviews list, review form.
-   Unknown (null) tags must invite confirmation, not look broken — tri-state is
-   the dominant state and the contribution hook.
-2. **Tag schema per Jerome's Airbnb reference** — indoor + outdoor sets, additive
-   migration.
-3. **Photo upload UI** (backend done and tested).
+1. ✅ **Place sheet, full version** — tags displayed Airbnb-style (14 Sep), then
+   rating, reviews list and review form (23 Oct). Unknown (null) tags invite
+   confirmation through a one-tap vote: tri-state is the dominant state and the
+   contribution hook.
+2. ✅ **Tag schema** — indoor + outdoor sets, 19 tags, additive migration (14 Sep).
+3. ✅ **Photo upload UI** (23 Oct) — built and tested, **off in production** until
+   `DEPLOY.md` §3c is done.
 4. **"Add a place" flow** (backend done: USER → PENDING → admin approves).
-5. **Admin moderation UI** (routes exist, no interface).
+5. **Admin moderation UI** — the routes exist since 23 Oct for photos
+   (`GET`/`PATCH /api/admin/photos`; before that only places had one,
+   `PATCH /api/admin/places/:id`). Today photos are moderated from the shell
+   (`pnpm photos:moderate`). The screen needs: the PENDING queue with the
+   10-minute view link, approve/reject with a note, and the takedown reminder to
+   purge the Cloudflare cache.
+6. **Claude vision auto-moderation** — a first pass on each PENDING photo that
+   settles the clear cases and leaves the rest to a human (criteria to agree
+   with Jerome). It goes through the same `approvePhoto`/`rejectPhoto` service,
+   so the re-encode and the takedown rules stay in one place. Latency choice:
+   cron vs on upload (open decision 3).
 
 ### Phase B — Walks (the differentiator, post-MVP)
 - User-recorded/drawn walks shared publicly (Track model exists, minimal).
@@ -75,7 +130,8 @@ The pitch's core: rate, comment, correct, add. Order:
 
 ### Continuous
 - Enrich the 937 new places (nl/fr/en) — **needs Jerome's go, ~937×3 Claude calls**.
-- Wire Hostinger crons (OSM diff, enrich, photo moderation, Telegram digest).
+- Wire Hostinger crons (OSM diff, enrich, photo moderation, Telegram digest). The
+  digest is a natural place for "N photos waiting for review".
 - CI running `pnpm test` on push; Postgres dump cron before real users.
 
 ---
@@ -91,24 +147,39 @@ The pitch's core: rate, comment, correct, add. Order:
 - JWT expiry behaviour: document + test (jose checks `exp`; make it explicit).
 - 9 legacy places whose OSM element no longer matches the query (renamed/deleted
   upstream) — periodic reconciliation job someday.
+- Photo takedowns need a manual Cloudflare cache purge (public photos are cached
+  `immutable` for a year). Automating it needs a Cloudflare API token with
+  cache-purge rights only, not the R2 key.
+- User content (`photos.tinyhike.com`) is same-site with the app. `__Host-session`
+  and API-encoded JPEGs close the known attacks; a separate registrable domain
+  for user content would be the long-term fix.
 
 ---
 
 ## Open product decisions (for Jerome)
 
-1. **Tag design** — waiting on the Airbnb-style screenshot; then schema + UI.
+1. ~~**Tag design**~~ — resolved 14 Sep (validated mockup, shipped in `c173764`).
 2. **Enrichment run for the 937 new places** — cost vs. empty descriptions.
-3. Photo moderation latency: 03:00 cron (up to 21h) vs on-upload Claude vision.
+3. Photo moderation latency: today a human runs `pnpm photos:moderate`. Next:
+   03:00 cron (up to 21h) vs on-upload Claude vision.
 4. OSM data ownership when users edit OSM-sourced places (fork vs overlay).
 5. Generic-named places ("Speeltuin"): fine at launch, or reverse-geocode street
    names ("Speeltuin Voorhaven") for the top N most-viewed?
+6. **Signed reviews** — reviews show as "Un parent" because nothing sets
+   `User.handle`. To sign them: handles or first names? An opt-in "sign with
+   my name" toggle (anonymous by default)? Needs a handle setter on the profile.
 
 ---
 
 ## Immediate next actions
 
-- [ ] **Jerome: push 6 local commits** (`d55b9c1`…`1823ae7`).
-- [ ] **Jerome: Airbnb-style tag screenshot** → unblocks Phase A steps 1–2.
+- [x] ~~Jerome: push 6 local commits~~ (`main` is in sync with GitHub).
+- [x] ~~Jerome: Airbnb-style tag screenshot~~ (resolved through the validated mockup).
+- [x] ~~Phase A step 1: place sheet with tags + reviews~~ (14 Sep + 23 Oct).
+- [x] **Deploy the 23 Oct batch** (done 23 Oct) (`DEPLOY.md` §3b): migration, then API, then
+      web. Every parent gets signed out once (cookie renamed to `__Host-session`).
+- [ ] **Jerome: photo uploads setup** — the Cloudflare checklist and smoke test
+      in `DEPLOY.md` §3c (staging bucket, CORS, lifecycle, token scope,
+      `R2_STAGING_BUCKET`).
+- [ ] Admin moderation UI (Phase A step 5), then Claude vision (step 6).
 - [ ] Reload the map UX against the 1318-place dataset (clusters got denser).
-- [ ] Phase A step 1: place sheet with tags + reviews (can start the tri-state
-      tag UI groundwork now; final tag list lands with the screenshot).

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TinyHike — maquette « Note & avis »</title>
+<style>
+  :root {
+    --berry: #ef476f; --berry-deep: #d81e5b;
+    --sun: #ffd166; --sun-deep: #a35f00;
+    --mint: #06d6a0; --mint-deep: #037a5c;
+    --sky: #21a9d8; --sky-deep: #0b6e8f;
+    --grape: #9b5de5; --grape-deep: #7b2cbf;
+    --ink: #073b4c; --ink-soft: #4a6b78;
+    --surface: #fff; --surface-tint: #fff8ee; --border: #e4ebee;
+    --danger-bg: #ffe3ea; --danger-fg: #b0123f;
+    --radius: 18px; --radius-lg: 26px;
+    --shadow-pop: 0 3px 0 rgba(7,59,76,.12);
+    font-family: ui-rounded, 'SF Pro Rounded', 'Segoe UI Variable', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #cfe8dd; color: var(--ink); padding: 24px 12px 60px; }
+  .note { max-width: 860px; margin: 0 auto 20px; background: var(--surface); border-radius: var(--radius); padding: 14px 18px; font-size: 14px; line-height: 1.5; }
+  .note strong { color: var(--berry-deep); }
+  .wrap { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+  .phone { width: 390px; background: var(--surface); border-radius: 28px; overflow: hidden; box-shadow: 0 8px 30px rgba(7,59,76,.25); padding: 20px; position: relative; }
+  .phone-label { text-align: center; font-weight: 800; font-size: 15px; margin-bottom: 14px; }
+
+  h1 { font-size: 23px; font-weight: 800; letter-spacing: -.01em; }
+
+  /* ── En-tête note : le résumé qu'un parent lit en 1 seconde ── */
+  .score-head { display: flex; align-items: center; gap: 14px; margin-top: 14px;
+    background: var(--surface-tint); border: 2px solid var(--sun); border-radius: var(--radius); padding: 12px 16px; }
+  .score-big { font-size: 34px; font-weight: 800; line-height: 1; }
+  .score-meta { font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+  .stars { color: var(--sun-deep); font-size: 15px; letter-spacing: 2px; }
+  .score-head .kicker { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; color: var(--sun-deep); }
+
+  /* ── Un avis ── */
+  .rev { border-top: 2px solid var(--border); padding: 14px 0; }
+  .rev-head { display: flex; align-items: center; gap: 10px; }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; color: #fff; font-weight: 800; }
+  .rev-who { font-weight: 800; font-size: 14px; }
+  .rev-when { font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+  .rev-stars { margin-left: auto; color: var(--sun-deep); font-size: 13px; letter-spacing: 1px; }
+  .rev-text { margin-top: 8px; font-size: 14px; line-height: 1.55; }
+  .rev-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .rtag { font-size: 11.5px; font-weight: 800; border-radius: 999px; padding: 3px 10px; }
+  .rtag--yes { background: #dff8ef; color: var(--mint-deep); }
+  .rtag--no { background: var(--danger-bg); color: var(--danger-fg); text-decoration: line-through; }
+
+  .more-rev { display: block; width: 100%; margin-top: 4px; padding: 11px; border-radius: 999px;
+    border: 2px solid var(--ink); background: var(--surface); font: inherit; font-weight: 800; font-size: 14px; cursor: pointer; }
+
+  /* ── Formulaire ── */
+  h2 { font-size: 17px; font-weight: 800; margin-top: 18px; }
+  .star-pick { display: flex; gap: 8px; margin-top: 10px; }
+  .star-pick button { font-size: 30px; background: none; border: none; cursor: pointer; filter: grayscale(1); opacity: .45; transition: all .12s; }
+  .star-pick button.on { filter: none; opacity: 1; transform: scale(1.12); }
+  textarea { width: 100%; margin-top: 12px; padding: 12px 14px; border: 2px solid var(--border); border-radius: var(--radius);
+    font: inherit; font-size: 15px; min-height: 84px; resize: vertical; color: var(--ink); }
+  textarea:focus { border-color: var(--sky); }
+  textarea:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+  .hintbox { margin-top: 10px; font-size: 12.5px; color: var(--ink-soft); font-weight: 600; line-height: 1.5;
+    background: var(--surface-tint); border-radius: 12px; padding: 8px 12px; }
+  .submit { margin-top: 12px; width: 100%; padding: 13px; border: none; border-radius: 999px;
+    background: var(--berry-deep); color: #fff; font: inherit; font-weight: 800; font-size: 15px; cursor: pointer; box-shadow: var(--shadow-pop); }
+  .submit:disabled { background: var(--ink-soft); box-shadow: none; }
+
+  /* ── État vide ── */
+  .empty { text-align: center; padding: 22px 10px; border: 2px dashed var(--border); border-radius: var(--radius); margin-top: 14px; }
+  .empty .big { font-size: 34px; }
+  .empty p { font-size: 14px; font-weight: 700; margin-top: 6px; }
+  .empty .sub { font-size: 12.5px; color: var(--ink-soft); font-weight: 600; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <strong>Maquette « Note & avis »</strong> — la brique suivante de la fiche lieu.
+  Gauche : lieu avec avis (résumé 1-seconde en haut, liste, formulaire). Droite : l'état vide, majoritaire au début —
+  il doit donner envie d'être le premier. Les étoiles du formulaire sont cliquables.
+  Ce qui a changé à la construction (23 oct. 2026) : les étoiles et le commentaire demandent un compte (un avis par parent et par lieu,
+  republier le remplace ; sans compte, une carte « Connecte-toi pour donner ton avis » remplace le formulaire). Tous les avis s'affichent
+  « Un parent » : « Marieke » illustre un avis signé, qui n'existe pas encore. Les votes « À confirmer » (tags seuls) ne sont pas listés,
+  ils comptent dans « N infos confirmées ». La ligne « a confirmé des infos » ne sert qu'à un avis avec commentaire et tags, sans étoiles.
+</div>
+
+<div class="wrap">
+
+  <!-- ═══ CAS 1 : avec avis ═══ -->
+  <div class="phone">
+    <div class="phone-label">⭐ Cas 1 — lieu avec avis</div>
+    <h1>Het Park</h1>
+
+    <div class="score-head">
+      <div class="score-big">4,6</div>
+      <div>
+        <div class="kicker">Note des parents</div>
+        <div class="stars">★★★★★</div>
+        <div class="score-meta">12 avis · 9 infos confirmées</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <div class="rev" style="border-top:none">
+        <div class="rev-head">
+          <div class="avatar" style="background:var(--grape)">M</div>
+          <div><div class="rev-who">Marieke</div><div class="rev-when">il y a 3 jours</div></div>
+          <div class="rev-stars">★★★★★</div>
+        </div>
+        <p class="rev-text">Parfait pour les enfants, larges allées et plein d'ombre près de l'Euromast. On y retourne chaque semaine.</p>
+        <div class="rev-tags">
+          <span class="rtag rtag--yes">✓ Ombragé</span>
+          <span class="rtag rtag--yes">✓ Sol roulable</span>
+        </div>
+      </div>
+
+      <div class="rev">
+        <div class="rev-head">
+          <div class="avatar" style="background:var(--sky)">👤</div>
+          <div><div class="rev-who">Un parent</div><div class="rev-when">la semaine dernière</div></div>
+          <div class="rev-stars">★★★☆☆</div>
+        </div>
+        <p class="rev-text">Bien mais toilettes fermées le lundi.</p>
+        <div class="rev-tags"><span class="rtag rtag--no">✗ Toilettes</span></div>
+      </div>
+
+      <div class="rev">
+        <div class="rev-head">
+          <div class="avatar" style="background:var(--mint)">👤</div>
+          <div><div class="rev-who">Un parent</div><div class="rev-when">il y a 2 semaines</div></div>
+          <div class="rev-stars" style="color:var(--ink-soft);font-size:11.5px;letter-spacing:0">a confirmé des infos</div>
+        </div>
+        <div class="rev-tags"><span class="rtag rtag--yes">✓ Clôturé</span></div>
+      </div>
+    </div>
+
+    <button class="more-rev">Voir les 12 avis</button>
+
+    <h2>Ton avis</h2>
+    <div class="star-pick" id="pick1"></div>
+    <textarea placeholder="Raconte aux autres parents : accès, poussette, ce qui a plu aux enfants…"></textarea>
+    <div class="hintbox">💡 Ton avis apparaît anonymement, sous « Un parent ». Si tu publies à nouveau, il remplace ton avis précédent.</div>
+    <button class="submit">Publier l’avis</button>
+  </div>
+
+  <!-- ═══ CAS 2 : état vide ═══ -->
+  <div class="phone">
+    <div class="phone-label">🐣 Cas 2 — aucun avis encore (majoritaire)</div>
+    <h1>Speeltuin</h1>
+
+    <div class="empty">
+      <div class="big">🐣</div>
+      <p>Aucun avis pour l’instant</p>
+      <p class="sub">Tu y es allé ? Sois le premier parent à raconter — 30 secondes suffisent.</p>
+    </div>
+
+    <h2>Ton avis</h2>
+    <div class="star-pick" id="pick2"></div>
+    <textarea placeholder="Raconte aux autres parents : accès, poussette, ce qui a plu aux enfants…"></textarea>
+    <div class="hintbox">💡 Ton avis apparaît anonymement, sous « Un parent ». Si tu publies à nouveau, il remplace ton avis précédent.</div>
+    <button class="submit">Publier l’avis</button>
+  </div>
+
+</div>
+
+<script>
+  for (const id of ['pick1','pick2']) {
+    const box = document.getElementById(id);
+    for (let i = 1; i <= 5; i++) {
+      const b = document.createElement('button');
+      b.textContent = '⭐';
+      b.onclick = () => [...box.children].forEach((c, j) => c.classList.toggle('on', j < i));
+      box.appendChild(b);
+    }
+  }
+</script>
+</body>
+</html>

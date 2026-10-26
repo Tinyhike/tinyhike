@@ -20,6 +20,8 @@ large tap targets, high contrast, chunky shapes, nothing subtle.
 | Component styles | `web/src/index.css` |
 | App shell + tab bar | `web/src/components/AppLayout.tsx` |
 | Place sheet | `web/src/components/PlaceSheet.tsx` |
+| Amenities, reviews, photo upload | `web/src/components/PlaceAmenities.tsx`, `PlaceReviews.tsx`, `PhotoUpload.tsx` |
+| Mockups (standalone HTML) | `design/mockups/` |
 | Map, clusters, pins | `web/src/pages/MapPage.tsx` |
 | Icon artwork (generated) | `ops/scripts/generate-icons.py` |
 | PWA manifest | `web/public/manifest.json` |
@@ -28,18 +30,27 @@ large tap targets, high contrast, chunky shapes, nothing subtle.
 
 Every hue has a `-deep` variant. Bright values are for fills, borders and accents;
 `-deep` is for anything carrying **white text**, where the bright value doesn't
-reach 4.5:1 contrast.
+reach 4.5:1 contrast, and for coloured text on light backgrounds.
 
 | Token | Hex | Used for |
 |---|---|---|
 | `--berry` / `--berry-deep` | `#ef476f` / `#d81e5b` | Primary action, map pins, Map tab, close button |
-| `--sun` / `--sun-deep` | `#ffd166` / `#e08c00` | Loading pill, tip callouts, icon background, PWA splash |
-| `--mint` / `--mint-deep` | `#06d6a0` / `#04936f` | Positive / confirmed |
+| `--sun` / `--sun-deep` | `#ffd166` / `#a35f00` | Loading pill, tip callouts, icon background, PWA splash; `-deep`: star ratings, the "Note des parents" kicker |
+| `--mint` / `--mint-deep` | `#06d6a0` / `#037a5c` | Positive / confirmed; `-deep`: "✓" chips, the photo Send button, "photo sent" |
 | `--sky` / `--sky-deep` | `#21a9d8` / `#0b6e8f` | Links, focus rings, Profile tab, language switcher |
 | `--grape` / `--grape-deep` | `#9b5de5` / `#7b2cbf` | Map clusters, Lists tab |
 | `--ink` | `#073b4c` | Body text — deep teal-navy, not black |
 | `--ink-soft` | `#4a6b78` | Secondary text |
 | `--surface-tint` | `#fff8ee` | Callout backgrounds — a warm tint of `--sun` |
+
+**Measured contrast (WCAG 2, 4.5:1 needed for body text).** Every `-deep` passes
+with white: berry 4.93, sun 5.01, mint 5.33, sky 5.77, grape 7.11. They also pass
+as text on `--surface-tint` (berry 4.68, sun 4.75, mint 5.05). On the mint tint
+`#dff8ef`, only mint, sky and grape pass (4.77, 5.17, 6.37); berry and sun fall
+just short, so don't put them there. The bright values never carry text: `--sky`
+with white is 2.72. `--sun-deep` and `--mint-deep` were darkened on 23 Oct 2026
+from `#e08c00` (2.65 with white) and `#04936f` (3.88), which failed. Re-measure
+whenever a hex moves; `tokens.css` keeps the same figures in its header.
 
 The identity comes from using the **whole palette semantically** rather than
 tinting one brand colour: each tab lights up in its own hue, and the place sheet
@@ -75,6 +86,10 @@ by hand whenever the palette moves**, or the app will drift out of sync with its
 `web/public/manifest.json` and `web/index.html` also carry `#ffd166` as the theme
 and splash colour.
 
+The mockups in `design/mockups/` are standalone HTML with their own `:root` copy of
+the palette. Update them too, or the next design pass copies the old values back
+into the app.
+
 ## Changing the identity, end to end
 
 ```bash
@@ -95,29 +110,98 @@ nginx serves `web/dist` directly, so a build is the deploy. No service restart.
 
 ## Components in play today
 
-`AppLayout` (tab bar) · `PlaceSheet` (bottom sheet over the map) · `MapPage`
-(clustered Mapbox) · `ListsPage` · `ProfilePage` (+ language switcher) · `AuthPage`
-(magic link) · shared `.btn`, `.card`, `.field`, `.skeleton`, `.state`.
+`AppLayout` (tab bar) · `PlaceSheet` (bottom sheet over the map) · `PlaceAmenities`
+· `PlaceReviews` · `PhotoUpload` · `SessionRetry` · `MapPage` (clustered Mapbox) ·
+`ListsPage` · `ProfilePage` (+ language switcher) · `AuthPage` (magic link) · shared
+`.btn`, `.card`, `.field`, `.skeleton`, `.state`, `.link-btn`.
 
-## Not designed yet
+## Built and validated (don't redesign without a reason)
 
-The place sheet currently shows name, description, tips and photos. Still to come,
-and the most identity-hungry pieces:
+- **The amenities section** — "Ce que propose ce lieu", Airbnb-style, 19 tri-state
+  tags in 3 groups ordered by place kind, with the "À confirmer" chip opening an
+  anonymous yes/no vote. Validated by Jerome from
+  `design/mockups/place-tags-mockup.html`, live since 14 Sep 2026.
+  Note for fine-tuning later: some tags (e.g. `shaded`) may deserve lower display
+  priority — Jerome's call, list order lives in `web/src/lib/tags.ts`.
+- **Rating + reviews** (23 Oct 2026), built from
+  `design/mockups/place-reviews-mockup.html`. Score header (average with the UI
+  locale's decimal mark, star row, "12 avis · 9 infos confirmées"), written
+  reviews newest first ("Voir les N avis" expands, "Charger plus d'avis" pages
+  older ones), star + comment form, first-reviewer empty state. **The form is
+  gated on the account:**
+  - **Signed out:** a sign-in card replaces the form. "Connecte-toi pour donner
+    ton avis" is a full-width `.btn--sky` link, and the magic link brings the
+    parent back to this place. A hint says the yes/no amenity questions need no
+    account.
+  - **Signed in:** stars (a radio group, 44×44 per star) and a labelled, optional
+    comment. If the parent already reviewed the place, the form opens prefilled
+    in "edit" mode; posting replaces the old review.
+  - The hint says the review appears anonymously, as "Un parent", and that
+    posting again replaces the previous one. **Never promise "sign with your
+    name"**: no handle can be set yet.
+  - While `/me` can't be checked (API restarting, offline), the form and the
+    photo prompt are both replaced by **one** "couldn't check, try again" line.
+  - An unsent draft stays on the device for a day, so it survives the magic-link
+    round trip. When a session runs out mid-post, the sign-in card says the
+    draft was kept.
+- **Photo upload** (23 Oct 2026), under the photos on the place sheet. One state
+  at a time:
+  - *disabled* (`/api/photos/config` says so): nothing rendered at all;
+  - *signed out*: a full-width "Connecte-toi pour ajouter une photo" button;
+  - *idle*: the dashed sky "📷 Ajouter une photo" button;
+  - *picked*: a preview with Send (`.btn--mint`) and Cancel;
+  - *preparing → uploading N% → finishing*: the preview dims, a mint→sky
+    progress bar runs, and Cancel stays available;
+  - *done*: "Photo envoyée ! Elle sera visible après modération." on the mint
+    tint, with "Ajouter une autre photo" below;
+  - *error*: a localized message with Retry, which keeps the picked photo, and
+    the uploaded file when only the last step failed. A stall (45 s without
+    progress) has its own message.
 
-- **The 11 stroller tags** (`napFriendly`, `shaded`, `smooth`, `hasToilets`,
-  `hasPlayground`, `wheelchairOk`…) — icons + treatment. This is the product's
-  reason to exist and it isn't on screen at all yet.
-- A **stroller score** and how it reads at a glance.
-- Reviews (the API returns 20, none are rendered).
-- Photo upload UI.
-- The marketing landing page (`marketing/index.html`, still undeployed).
+  Focus follows the flow (Send → progress → result) and a single polite live
+  region announces start, result and errors, never each percent.
+
+## Not designed yet — the identity-hungry pieces
+
+- A **stroller score** at a glance (the one number a parent wants) — relates to
+  the rating header above; not the same thing as the star average.
+- "Add a place" flow (backend done: USER → PENDING → admin).
+- Admin moderation screen. Photos are moderated from the shell for now
+  (`pnpm photos:moderate`); the API routes for a screen exist.
+- Signed reviews (handle or first name, opt-in): a product decision first, see
+  `ROADMAP.md`.
+- The marketing landing page (`marketing/index.html`, still undeployed) — needs
+  the toy-box identity, OG/Twitter meta, favicon.
+
+## Jerome's visual ideas (14 Sep 2026 — to explore, not yet committed)
+
+- **Logo rework**: the generated icon is a placeholder. Direction: something with a
+  small **stroller**. Jerome plans to iterate in an external image/logo generator;
+  whatever comes back must land as SVG (+ the PNG/ICO set regenerated — see
+  `ops/scripts/generate-icons.py`, which can be retired once a real logo exists).
+- **Landing page motion**: a scene scrolling left→right — a parent pushing a
+  stroller, pausing on a bench under a tree, moving on, pausing at a terrace
+  table, passing between houses. Gives the page life and *is* the product's story
+  (a walk with stops at stroller-friendly places). Feasible as pure SVG/CSS
+  keyframe animation, no video: flat characters in the toy-box palette, one long
+  horizontal SVG strip, `animation-play-state` pauses at each stop.
+  Must respect `prefers-reduced-motion` (static frame instead).
 
 ## Accessibility floor
 
 Non-negotiable, whatever the identity becomes:
 
-- White text only on `-deep` variants.
-- Focus rings are visible — `3px solid var(--sky)`, never `outline: none`.
-- `prefers-reduced-motion` disables the sheet slide and the skeleton shimmer.
+- White text only on `-deep` variants. Coloured text on a light background uses
+  `-deep` too, and must reach 4.5:1 (measured figures under "Palette").
+- Focus rings are visible — `3px solid var(--sky)`, never `outline: none`. That
+  includes text fields: a border colour change alone is not a focus indicator.
+- `prefers-reduced-motion` disables the sheet slide, the skeleton shimmer, the
+  star scale and the progress-bar transition.
 - Inputs stay at `16px`, below which iOS Safari zooms on focus.
-- Tap targets ≥ 44px. One-handed, stroller in the other.
+- Tap targets ≥ 44px. One-handed, stroller in the other. In practice:
+  - `.btn`, `.link-btn`, `.photo-add` and `.photo-cancel` carry `min-height: 44px`;
+  - each star in the picker is a 44×44 box, with the scale on the glyph, not the
+    hit box;
+  - a link styled as a button needs a box display (`a.btn` is `inline-flex`),
+    otherwise its padding adds no tap height;
+  - a sign-in prompt is a full-width button, never a line of small text.
