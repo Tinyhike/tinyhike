@@ -54,12 +54,17 @@ child in Rotterdam.
   No web change: a hidden café's link answers the existing "not found" sheet.
 - **Verification of places** — `pnpm places:verify` on the VPS, and the admin routes
   `GET /api/admin/places`, `PUT`/`DELETE /api/admin/places/:id/verification`.
+- **Adding a café the seeder missed** — `pnpm places:verify add node/<id> --category CAFE`
+  creates it, hidden, from one OSM element (brunch places OSM files as restaurants,
+  e.g. By Jarmusch West). Widening the seeder to them: proposal in
+  `docs/plan-cafes-non-verifies.md` §10 (10 restaurants in Rotterdam, 20 with
+  pancake and lunch).
 - **Playground details from OSM** — `minAge` / `maxAge` and the equipment kinds
   (`pnpm backfill:playgrounds`). Thin coverage: 61 of 854 playgrounds with
   equipment, 3 with an age. Not displayed yet (proposal in
   `docs/plan-cafes-non-verifies.md` §9).
 - **Migrations generated offline** with `prisma migrate diff`, never `migrate dev`.
-- **563 Vitest tests green** (was 395).
+- **612 Vitest tests green** (was 395).
 - **`docs/MAINTENANCE.md`** — the maintenance window procedure (apt, PostgreSQL,
   PostGIS, Node, reboot, rollback), prepared, not run.
 
@@ -228,6 +233,8 @@ The pitch's core: rate, comment, correct, add. Order:
       session).
 - [ ] Decide how the sheet shows playground ages and equipment
       (`docs/plan-cafes-non-verifies.md` §9).
+- [ ] Decide whether the seeder takes brunch restaurants, hidden like cafés
+      (`docs/plan-cafes-non-verifies.md` §10: strict filter or with pancake/lunch).
 - [ ] **Jerome: photo uploads setup** — the Cloudflare checklist and smoke test
       in `DEPLOY.md` §3c (staging bucket, CORS, lifecycle, token scope,
       `R2_STAGING_BUCKET`).

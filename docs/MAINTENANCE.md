@@ -136,7 +136,7 @@ diff <(sudo -u postgres psql -d tinyhike -XAt -c 'SELECT (SELECT count(*) FROM "
 cd /srv/tinyhike/api && pnpm exec prisma migrate status    # "Database schema is up to date"
 
 # Application
-cd /srv/tinyhike/api && pnpm test                          # tout vert sous le nouveau Node (563 tests au 26/10)
+cd /srv/tinyhike/api && pnpm test                          # tout vert sous le nouveau Node (612 tests au 26/10)
 node -e "import('sharp').then(s => console.log('sharp ok', s.default.versions.sharp))"
 curl -s http://127.0.0.1:3000/api/health
 curl -sk --resolve app.tinyhike.com:443:127.0.0.1 https://app.tinyhike.com/api/health

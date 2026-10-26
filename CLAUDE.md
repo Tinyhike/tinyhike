@@ -2,7 +2,7 @@
 
 > **For agents (Claude Code, claude.ai, others).** Read this first, every session, before touching any code, command, or commit. This file reflects the **actual state** of the project, not the original aspirations.
 
-Last updated: 26 October 2026 — unverified cafés hidden (place category + admin verification), playground ages and equipment imported from OSM. Previous: 23 October 2026, reviews + photo-upload batch.
+Last updated: 26 October 2026 — unverified cafés hidden (place category + admin verification), playground ages and equipment imported from OSM, `places:verify add` (a place the seeder missed, from one OSM element). Previous: 23 October 2026, reviews + photo-upload batch.
 
 ---
 
@@ -35,6 +35,7 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
   - **Magic link returns you where you were** — `POST /api/auth/magic` takes an optional `next` (allowlist `^/(places/<id>|profile|lists)?$`, checked again on `/verify`); an invalid `next` falls back to `/`, never an error.
   - **Place visibility and privacy** — one rule, `api/src/lib/place-visibility.ts` (Jerome, 26 Oct 2026): the public sees APPROVED places whose `category` is PLAYGROUND, PARK or PICNIC_SITE, **plus any APPROVED place an admin has verified** (`verifiedAt` set). Cafés and places with a null category stay in the DB, hidden until verified. It is an allowlist: a null or new category fails closed. Every route goes through it (`publicPlaceWhere` for queries and counts, `canSeePlace()` per place): map + `X-Total-Count`, detail, reviews, my-review, review/tag-vote POST, photo confirm, lists (content, counts, add), admin stats, enrichment. A hidden place is 404 to everyone but its submitter and ADMINs. Public payloads never carry user ids (`submittedById`, `verifiedById`, `uploadedById`, a review's `userId`, a list owner's id), the verification date (`verifiedAt`, and `updatedAt`, which a verification stamps to the same instant), or moderation notes.
   - **Place verification = an admin's visit** — four points, each yes or no: step-free entrance (`wheelchairOk`), room for the stroller inside (`isStrollerWide`), changing table (`hasChangingTable`), toilets (`hasToilets`). They are written to those existing tags, so the sheet shows them with no web change, "no" included (a verified café can be one to avoid). `verifiedAt` + `verifiedById` record when and who. `pnpm places:verify` (CLI) and `PUT`/`DELETE /api/admin/places/:id/verification` share `api/src/services/place-verification.ts`; the verifier must be ADMIN **in the DB**, not just in the JWT (same check on unverify, and on a `category` change through `PATCH`, since both change what the public sees). Approving a parent's proposal (`PATCH /api/admin/places/:id`, which can also set `category`) is a separate action and never verifies. Jerome's account is ADMIN since 26 Oct 2026 (the only account); the role is read from the JWT, so it takes effect at his next sign-in (log out, then sign in again).
+  - **Adding a place the seeder missed** — the seeder only takes `amenity=cafe`, so a brunch place OSM files as `amenity=restaurant` + `cuisine=breakfast` (By Jarmusch West, `node/11007237505`) was never imported and can't be verified. `pnpm places:verify add node/<id> --category CAFE` creates it from that one element: name, position (a way or relation gets its bounding-box centre, like Overpass `out center`) and the stroller tags OSM states, read from the OSM editing API (`api/src/lib/osm-api.ts`, not Overpass, which is often at capacity). It stays hidden until verified: `add` only creates hidden categories (today CAFE), refuses an element outside the Rotterdam bbox (a mistyped id), and never duplicates (an `osmId` already in the DB, typed or legacy, is shown and left untouched). `addPlaceFromOsm()` in `place-verification.ts`, CLI only. Widening the seeder to brunch restaurants is a proposal, not done (`docs/plan-cafes-non-verifies.md` §10).
 - **Reviews: stars and comments need an account** — one written review (score and/or comment) per parent per place; posting again updates it (200) instead of adding one (201). Enforced in the DB by the partial unique index `Review_one_written_per_user_per_place` (migration `20261023120000_photo_staging_and_review_dedupe`, see pitfall 22). Reviews are **displayed anonymously** ("Un parent"): no UI sets a handle yet, so the web always sends `anonymous: true`. The place detail carries the first 20 written reviews, `reviewCount`, `scoreAvg`, `scoreCount`, `voteCount` and `nextCursor`; `GET /api/places/:id/reviews?cursor=` pages the rest, `GET /api/places/:id/my-review` prefills the form. `POST /api/places/:id/reviews` is limited to 30/min per client, body 8 KB, comment 500 chars.
 - **Amenity tag votes stay one tap and anonymous** — the "À confirmer" yes/no chips need no account. A vote is a tag-only Review row; `userId` is stored when the voter happens to be signed in. Tags are checked against `TAG_KEYS` (`api/src/lib/tags.ts`, the 19 keys, held in sync with `web/src/lib/tags.ts` by `api/test/tags.test.ts`). Tag-only rows never count as reviews and never push written reviews out of the list.
 - **Photo pipeline built end to end, OFF in production until the one-time setup** (`DEPLOY.md` §3c). Unmoderated bytes are never publicly reachable:
@@ -46,7 +47,7 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
 - **Web Vite 5 + React 18 + Mapbox GL 3** — clustered Rotterdam map. Dev: `cd web && pnpm dev` on :5173, proxies `/api/*` to :3000
 - **1318 places seeded from OSM** (26 Oct 2026: 854 playgrounds, 159 parks, 14 picnic sites, 274 cafés, 17 that no longer match OSM). **1027 are public**, 291 hidden (cafés and the 17, until verified). `Place.category` comes from the OSM tag (`categoryOf()` in `lib/osm.ts`, filled by `pnpm backfill:osm-tags`). 381 were enriched by Claude into nl/fr/en, 260 of them cafés: about 11% of the public places have a description. **No AI enrichment for now** (Jerome, 26 Oct), and `enrich.ts` only ever takes public places.
 - **Playground details from OSM** — `minAge`, `maxAge` (`min_age` / `max_age`) and `playEquipment` (`playground=*` features inside the playground's outline), filled by `pnpm backfill:playgrounds`, only where unset. Coverage is thin: 61 of 854 playgrounds have equipment, 3 have an age. Returned by the detail (not by the map list); **not displayed yet** (proposal in `docs/plan-cafes-non-verifies.md` §9).
-- **Vitest** — 563 tests green in 15 files via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens). Prisma is mocked (`api/test/helpers.ts`), R2 is `vi.mock`ed: no test touches the network or the DB
+- **Vitest** — 612 tests green in 16 files via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens). Prisma is mocked (`api/test/helpers.ts`), R2 is `vi.mock`ed: no test touches the network or the DB
 - **Magic-link auth works end to end in production** (verified 14 Sep 2026): email delivered by Resend, `/api/auth/verify` hit on the web origin, 302, session cookie usable by the app
 - **Web app has a real shell** — tab bar (Carte/Listes/Profil), place detail as a sheet over a still-mounted map, loading/error states everywhere, interface in nl/fr/en with a switcher, bright toy-box identity (see `DESIGN.md`), generated PWA icons
   - The place sheet carries the amenities (19 tri-state tags with one-tap votes), the rating header + reviews + review form, and "Add a photo" (re-encoded on the device, PUT with progress, cancel, retry).
@@ -135,13 +136,14 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
 │   │   ├── lib/
 │   │   │   ├── client-key.ts   # rate-limit key: IPv4 as-is, IPv6 cut to its /64
 │   │   │   ├── osm.ts          # Overpass query + OSM tags → stroller booleans and category (shared by the OSM jobs)
+│   │   │   ├── osm-api.ts      # one element from the OSM editing API (places:verify add)
 │   │   │   ├── osm-playgrounds.ts  # playground ages + equipment: outlines, point-in-polygon, normalisation
 │   │   │   ├── place-visibility.ts # THE visibility rule: publicPlaceWhere, canSeePlace, private columns
 │   │   │   ├── r2.ts           # the only S3 client: staging + public buckets, presign, copy, head, get, put
 │   │   │   └── tags.ts         # TAG_KEYS, the 19 amenity tags (mirrors web/src/lib/tags.ts)
 │   │   ├── services/
 │   │   │   ├── photo-moderation.ts  # list / approve (sharp re-encode → public bucket) / reject / purge-legacy
-│   │   │   └── place-verification.ts # list / verify (4 points + date + admin) / unverify
+│   │   │   └── place-verification.ts # list / verify (4 points + date + admin) / unverify / add from OSM (hidden)
 │   │   ├── routes/
 │   │   │   ├── auth.ts         # magic-link send (with `next`), verify, me, logout
 │   │   │   ├── places.ts       # GET (bbox + locale), GET detail, POST, reviews: list, my-review, post (upsert)
@@ -155,7 +157,7 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
 │   │       ├── backfill-playground-details.ts  # fill playground ages + equipment from OSM
 │   │       ├── enrich.ts       # Claude Sonnet 4.6 → PlaceTranslation (nl/fr/en), public places only
 │   │       ├── moderate-photos.ts    # pnpm photos:moderate list | approve | reject | purge-legacy
-│   │       └── verify-places.ts      # pnpm places:verify list | verify | unverify
+│   │       └── verify-places.ts      # pnpm places:verify list | verify | unverify | add
 │   ├── test/                   # Vitest: mocked Prisma (helpers.ts), R2 mocked, never the network
 │   └── Dockerfile              # not used yet, kept for future Docker setup
 ├── web/
@@ -298,6 +300,8 @@ cd /srv/tinyhike/api
 pnpm places:verify list --category CAFE --unverified --name <text>   # find it: id, four points, OSM link
 pnpm places:verify verify <placeId> --step-free yes --stroller-room no --changing-table yes --toilets yes
 pnpm places:verify unverify <placeId>      # hides it again; the four answers stay (--by <email> on both if several ADMINs)
+pnpm places:verify add node/<osmId> --category CAFE   # a café OSM files as a restaurant: added hidden, then verify it
+                                           # (way/<id>, relation/<id> or the openstreetmap.org link work too)
 
 # Moderate photos (until the admin UI exists). A PENDING photo's view URL is a 10-min signed link.
 cd /srv/tinyhike/api

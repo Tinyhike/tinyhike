@@ -1,6 +1,6 @@
 # Plan : masquer les cafés non vérifiés
 
-**Statut : exécuté le 26 octobre 2026**, après le feu vert de Jérôme. Ses décisions sont au §7 et le résultat au §8. Le §9 propose un affichage des âges et des jeux (non codé). Les §0 à §6 sont la proposition soumise à Jérôme ; ses décisions (§7) et le résultat (§8) la remplacent là où ils diffèrent. Les écarts sont signalés en ligne par « **Exécuté :** ».
+**Statut : exécuté le 26 octobre 2026**, après le feu vert de Jérôme. Ses décisions sont au §7 et le résultat au §8. Le §9 propose un affichage des âges et des jeux (non codé). Le §10 propose d'élargir l'import aux restaurants de brunch (non appliqué). Les §0 à §6 sont la proposition soumise à Jérôme ; ses décisions (§7) et le résultat (§8) la remplacent là où ils diffèrent. Les écarts sont signalés en ligne par « **Exécuté :** ».
 
 Décision de Jérôme (26/10) : la carte n'affiche que les aires de jeux, les parcs et les lieux vérifiés. Les cafés restent en base, masqués tant qu'ils ne sont pas vérifiés.
 
@@ -266,3 +266,29 @@ Les questions posées dans la proposition sont gardées ci-dessous (§7 d'origin
 5. **Pour enrichir la donnée**, plus tard : une contribution « quels jeux ? » par les parents (puces à cocher, sur le modèle des votes de tags), ou des corrections poussées dans OSM. Avec 8 % de couverture, c'est la contribution qui fera la valeur de ce bloc.
 
 **Charge estimée** pour le web (1 et 2) : environ 2 heures, avec les 3 langues, sans changement d'API.
+
+## 10. Élargir l'import aux restaurants de brunch (proposition, non appliquée)
+
+**Pourquoi.** Jérôme n'a pas trouvé By Jarmusch West avec `pnpm places:verify list`. OSM le classe `amenity=restaurant` + `cuisine=breakfast` (`node/11007237505`, Nieuwe Binnenweg 575), et le seeder ne prend que `amenity=cafe` : il n'a jamais été importé. En attendant une décision, `pnpm places:verify add node/<id> --category CAFE` ajoute un tel lieu à la main, masqué jusqu'à sa vérification (fait le 26/10).
+
+### Relevé du 26/10 (Overpass, lecture seule, bbox Rotterdam `51.8,4.4,51.95,4.6`)
+
+- 770 `amenity=restaurant` dans la bbox, dont **328 sans `cuisine`** : la donnée OSM est le vrai plafond.
+- **Filtre demandé** (`amenity=restaurant` dont `cuisine` contient `breakfast`, `brunch` ou `coffee_shop`) : **10 restaurants**, tous nommés, aucun déjà en base.
+  - `breakfast` (7) : Baker & Moore, By Jarmusch West, Juffrouw van Zanten Rotterdam West, Lider BBQ Villa, Pancakes by June, Restobar Colette, SUE.
+  - `coffee_shop` (3) : De Machinist, Het Leerstation, Het Theehuis.
+  - `brunch` : 0. Les clés `brunch=*` / `breakfast=*` : 2 lieux, déjà en base comme cafés.
+- **Variante plus large** (+ `cuisine=pancake`, `lunch`, `lunchroom`) : **20 restaurants**. Les 10 de plus : 6 pannenkoekenhuizen (De Pannenkoekenboot, De Oude Maas, De Nachtegaal, Pannenkoe ×2, Petit Restaurant Schollebos), Lunchroom Leuk!, Lunchroom Devon, Brasserie Maxim's, FC Kip.
+- **À exclure** : 8 autres lieux tagués `coffee_shop` mais qui ne sont pas des restaurants (4 glaciers, 2 boulangeries Vlaamsch Broodhuys, un bar à espresso, un Dunkin').
+- **Manqués même par la variante** : des restaurants sans `cuisine` dont le nom dit brunch ou lunch (De Brunch Club, Lunchroom Fröbel, Broodje Aap Lunchroom). Pour eux, `add` à la main, ou corriger le tag dans OSM : le prochain import le prendra.
+
+### Proposition
+
+1. **Requête** (`overpassQuery`, `lib/osm.ts`) : ajouter `nwr["amenity"="restaurant"]["cuisine"~"(^|;) *(breakfast|brunch|coffee_shop) *(;|$)"](bbox);`, et `pancake|lunch|lunchroom` dans l'alternative si Jérôme retient la variante.
+2. **Catégorie `CAFE`**, pas de nouvelle valeur d'enum : pas de migration, même règle de visibilité, mêmes quatre points de vérification. `kindOf()` renvoie `cafe` pour ces restaurants. `mapOsmTags()` pose `hasCafe` d'après ce même genre, pour que le contrôle café/`hasCafe` de `backfill:osm-tags` reste à 0 écart.
+3. **Visibilité inchangée** : ils entrent masqués, comme candidats à vérifier. La carte reste à 1026 lieux.
+4. **Doublons** : un lieu déjà ajouté avec `add` a le même `osmId`, le seeder le saute.
+5. **Avant le vrai run**, ajouter `DRY_RUN=1` au seeder (il n'en a pas) et relire la liste.
+6. **Charge** : environ une heure avec les tests. Puis `pnpm seed:osm` et `pnpm backfill:osm-tags` (simulation, puis réel).
+
+**Recommandation** : le filtre strict (10 lieux), plus `add` pour les manques ponctuels. Ajouter les pannenkoekenhuizen est une décision produit pour Jérôme ; ils sont souvent pensés pour les familles.
