@@ -20,6 +20,7 @@ const nl = {
   'sheet.untitled': 'Naamloze plek',
   'sheet.loading': 'Plek laden',
   'sheet.notFound': 'Deze plek bestaat niet of is niet meer zichtbaar.',
+  'sheet.customersOnly': 'Alleen voor klanten',
   'sheet.error': 'Deze plek laden is mislukt.',
   'sheet.backToMap': 'Terug naar de kaart',
 
@@ -178,6 +179,7 @@ const fr: Record<MessageKey, string> = {
   'sheet.untitled': 'Lieu sans nom',
   'sheet.loading': 'Chargement du lieu',
   'sheet.notFound': 'Ce lieu n’existe pas ou n’est plus publié.',
+  'sheet.customersOnly': 'Réservé aux clients',
   'sheet.error': 'Impossible de charger ce lieu.',
   'sheet.backToMap': 'Retour à la carte',
 
@@ -326,6 +328,7 @@ const en: Record<MessageKey, string> = {
   'sheet.untitled': 'Unnamed place',
   'sheet.loading': 'Loading place',
   'sheet.notFound': 'This place doesn’t exist, or is no longer published.',
+  'sheet.customersOnly': 'Customers only',
   'sheet.error': 'Could not load this place.',
   'sheet.backToMap': 'Back to the map',
 

@@ -22,6 +22,8 @@ interface Translation {
 // PlaceTags carries the 19 tri-state tag fields the API returns on the detail.
 interface PlaceDetail extends PlaceTags {
   id: string
+  /** From OSM's access tag. PRIVATE places never reach the public unless verified. */
+  access?: 'OPEN' | 'CUSTOMERS' | 'PRIVATE'
   translations: Translation[]
   /** Approved photos only; r2Url is the public, re-encoded copy. */
   photos: Array<{ id: string; r2Url: string | null; createdAt: string }>
@@ -134,6 +136,12 @@ export default function PlaceSheet() {
           {data && (
             <>
               <h1 className="sheet-title">{tr?.name ?? t('sheet.untitled')}</h1>
+              {/* OSM's access=customers: a café's or a restaurant's playground. */}
+              {data.access === 'CUSTOMERS' && (
+                <p className="sheet-access">
+                  <span aria-hidden="true">🎟️</span> {t('sheet.customersOnly')}
+                </p>
+              )}
               {tr?.description && <p className="sheet-text">{tr.description}</p>}
               {tr?.tips && <p className="sheet-tip">{tr.tips}</p>}
 

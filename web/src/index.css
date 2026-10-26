@@ -189,6 +189,19 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 
 .sheet-title { font-size: 23px; font-weight: 800; line-height: 1.2; padding-right: 40px; }
 .sheet-text { margin-top: 10px; line-height: 1.6; }
+/* "Customers only" (OSM access=customers). grape-deep on white: 7.11:1. */
+.sheet-access {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 12px;
+  border: 2px solid var(--grape);
+  border-radius: 999px;
+  color: var(--grape-deep);
+  font-size: 14px;
+  font-weight: 700;
+}
 
 .sheet-tip {
   margin-top: 14px;
