@@ -52,6 +52,12 @@
       the real run: 19 cafés, hidden. `ONLY` matters: a plain seed would also have
       added 28 playgrounds and 7 parks new in OSM, public at once. Smoke test: still
       1005 public places, `X-Total-Count` 1004; an imported place → 404.
+- [x] What OSM gained since the first seed (26 Oct 2026): `DRY_RUN=1 pnpm seed:osm`
+      (41 names, the same list as in dev), `pg_dump`, the real run, then
+      `backfill:playgrounds` (dry run, then real: 1 new playground got its
+      equipment). No API restart: no API code changed. Smoke test: 1038 public
+      places (+33), `X-Total-Count` 1037, the 6 new cafés and the 2 private
+      places → 404, 0 verified café so 0 café on the map.
 - [ ] Photo uploads: one-time Cloudflare setup + browser smoke test (§3c). The UI
       ships with the batch but stays hidden until `R2_STAGING_BUCKET` is set.
 - [ ] Reboot to pick up the pending kernel (`7.0.0-15` → `7.0.0-38` now), with the

@@ -66,6 +66,10 @@ child in Rotterdam.
   26 Oct with `ONLY=amenity=restaurant pnpm seed:osm` (dry run first), hidden
   until verified; By Jarmusch West was already in. The map didn't move (1005
   public places). The seeder gained `DRY_RUN` and `ONLY`.
+- **What OSM gained since the first seed** — 41 places (28 playgrounds, 7 parks,
+  6 cafés), dry run then real, in dev then production: 33 on the map (1038 public
+  places), the 6 cafés and 2 private places hidden. `backfill:playgrounds` then
+  gave one of the new playgrounds its equipment (the others have none in OSM).
 - **Playground details from OSM** — `minAge` / `maxAge` and the equipment kinds
   (`pnpm backfill:playgrounds`). Thin coverage: 61 of 854 playgrounds with
   equipment, 3 with an age. Not displayed yet (proposal in
@@ -256,11 +260,10 @@ The pitch's core: rate, comment, correct, add. Order:
       session).
 - [ ] Decide how the sheet shows playground ages and equipment
       (`docs/plan-cafes-non-verifies.md` §9).
-- [ ] Decide whether to import what OSM gained since the first seed: 28
-      playgrounds and 7 parks (~33 would go on the map at once, 2 are private)
-      and 6 cafés (`DRY_RUN=1 pnpm seed:osm` lists them).
+- [x] Import what OSM gained since the first seed (26 Oct: 41 places, 33 visible).
+      Next time: `DRY_RUN=1 pnpm seed:osm` lists them first.
 - [ ] **Jerome: photo uploads setup** — the Cloudflare checklist and smoke test
       in `DEPLOY.md` §3c (staging bucket, CORS, lifecycle, token scope,
       `R2_STAGING_BUCKET`).
 - [ ] Admin moderation UI (Phase A step 5), then Claude vision (step 6).
-- [ ] Reload the map UX against the 1338-place dataset (clusters got denser).
+- [ ] Reload the map UX against the 1379-place dataset (clusters got denser).
