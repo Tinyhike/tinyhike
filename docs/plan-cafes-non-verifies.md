@@ -205,7 +205,7 @@ Les questions posées dans la proposition sont gardées ci-dessous (§7 d'origin
   | Table à langer | `hasChangingTable` | « Table à langer » |
   | Toilettes | `hasToilets` | « Toilettes » |
 
-  Le libellé « Passage large » est plus étroit que ce qu'on vérifie. Le renommer en « Place pour la poussette » serait un changement web (i18n et rebuild), non fait.
+  Le libellé « Passage large » est plus étroit que ce qu'on vérifie. **Exécuté le 26/10 :** renommé « Place pour la poussette » (nl « Ruimte voor de kinderwagen », en « Room for the stroller »), web reconstruit.
 - **Vérifier un café** : `pnpm places:verify` (CLI), ou `PUT /api/admin/places/:id/verification` (route admin). La date et l'admin sont enregistrés dans `verifiedAt` et `verifiedById`, jamais renvoyés publiquement. Le vérificateur doit être ADMIN en base, pas seulement dans son JWT. Pour retirer une vérification : `unverify`, ou `DELETE` sur la même route.
 - **Admin** : le seul compte en base est ADMIN. Le rôle est lu dans le JWT : Jérôme doit se déconnecter puis se reconnecter pour l'obtenir dans l'app (la CLI n'en a pas besoin).
 - **Approbation ≠ vérification** : `PATCH /api/admin/places/:id` approuve, rejette, ou fixe la `category` d'une proposition. Il ne touche jamais à `verifiedAt`.

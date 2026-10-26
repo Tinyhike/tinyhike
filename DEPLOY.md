@@ -41,6 +41,12 @@
 - [x] Dev environment separated from production (26 Oct 2026): `/srv/tinyhike-dev`,
       database `tinyhike_dev` without accounts or reviews, sign-in links in the log.
       From now on production only takes deploys (§3a).
+- [x] Private-places batch (26 Oct 2026), the first deploy under §3a: `git pull`
+      from the dev checkout, `pg_dump`, migration `20261026160000_place_access`,
+      API, web, then `pnpm backfill:osm-tags` (dry run, then real) to fill
+      `Place.access`. The API can go first: every row starts OPEN, i.e. visible as
+      before. Smoke test: a private playground → 404, a customers-only one → 200
+      with `access: CUSTOMERS`, the served bundle says "Place pour la poussette".
 - [ ] Photo uploads: one-time Cloudflare setup + browser smoke test (§3c). The UI
       ships with the batch but stays hidden until `R2_STAGING_BUCKET` is set.
 - [ ] Reboot to pick up the pending kernel (`7.0.0-15` → `7.0.0-38` now), with the

@@ -42,6 +42,9 @@ child in Rotterdam.
 | Approval vs verification | **Two separate actions.** Approving a parent's proposal does not verify it. |
 | Admin | Jerome's account is ADMIN. |
 | Descriptions | **No AI enrichment for now**, and never of hidden places. Instead, playground ages and equipment from OSM (display still to design). |
+| Dev and production | **Code is written and tested in `/srv/tinyhike-dev`** (own checkout, database without accounts or reviews, own `.env`); production only takes deploys: git pull, migrate deploy, build, restart (`DEPLOY.md` §3a). |
+| Private playgrounds | **Hidden** when OSM says `access=private`, unless verified (a parent reports one open, an admin verifies it). `access=customers` stays, with "Réservé aux clients" on the sheet. |
+| `isStrollerWide` label | "Place pour la poussette" / "Ruimte voor de kinderwagen" / "Room for the stroller", matching what a verification checks. |
 
 ---
 
@@ -63,8 +66,19 @@ child in Rotterdam.
   (`pnpm backfill:playgrounds`). Thin coverage: 61 of 854 playgrounds with
   equipment, 3 with an age. Not displayed yet (proposal in
   `docs/plan-cafes-non-verifies.md` §9).
+- **Dev separated from production** — `/srv/tinyhike-dev`: its own clone and
+  `node_modules`, database `tinyhike_dev` rebuilt from production without accounts,
+  reviews, sign-in tokens, photos, lists, follows or tracks
+  (`ops/scripts/dev-db-refresh.sh`), API on `127.0.0.1:3100`, sign-in links in the
+  log. Nothing shared with the service or nginx.
+- **Private places hidden** — `Place.access` from OSM's `access` tag
+  (`pnpm backfill:osm-tags` keeps it in step): 21 playgrounds and 1 park marked
+  private leave the map unless verified; 13 playgrounds, 1 picnic site and 1 café
+  marked `customers` get "Réservé aux clients" on the sheet.
+  `pnpm places:verify list --access PRIVATE` lists them.
+- **`isStrollerWide` relabelled** "Place pour la poussette" (web rebuilt).
 - **Migrations generated offline** with `prisma migrate diff`, never `migrate dev`.
-- **612 Vitest tests green** (was 395).
+- **647 Vitest tests green** (was 395).
 - **`docs/MAINTENANCE.md`** — the maintenance window procedure (apt, PostgreSQL,
   PostGIS, Node, reboot, rollback), prepared, not run.
 
@@ -184,9 +198,14 @@ The pitch's core: rate, comment, correct, add. Order:
   fast-food, a restaurant, an untagged node, 5 deleted; 8 typed: 2 ex-cafés, 5
   ex-playgrounds, 1 untagged). Hidden since 26 Oct (no category). A periodic
   reconciliation job someday.
-- 22 OSM playgrounds are `access=private` and 14 `access=customers` (schoolyards,
-  residential courtyards, café terraces): still on the map. Hiding them is a product
-  call.
+- `places:verify add` only accepts an element inside the Rotterdam bbox (a guard
+  against a mistyped id). **That limit has to go with the European map** (Jerome,
+  26 Oct): the area becomes every city the map covers, or the typo guard takes
+  another form.
+- Verifying a reported private playground goes through the café's four points
+  (step-free, room for the stroller inside, changing table, toilets): the second
+  one means little for a playground. A lighter "it is open" verification may be
+  wanted.
 - `requireAdmin`, and the ADMIN branch of `canSeePlace()`, trust the role in the
   JWT, which lives 30 days: a demoted admin keeps admin reads (and photo
   moderation) until then. The writes that change what the public sees (verify,
@@ -239,4 +258,4 @@ The pitch's core: rate, comment, correct, add. Order:
       in `DEPLOY.md` §3c (staging bucket, CORS, lifecycle, token scope,
       `R2_STAGING_BUCKET`).
 - [ ] Admin moderation UI (Phase A step 5), then Claude vision (step 6).
-- [ ] Reload the map UX against the 1318-place dataset (clusters got denser).
+- [ ] Reload the map UX against the 1319-place dataset (clusters got denser).
