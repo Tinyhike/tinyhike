@@ -66,17 +66,17 @@ model Place {
   // 19 nullable boolean tags (null = unknown — the dominant and expected state;
   // unknowns are surfaced in the UI as "À confirmer" contribution invitations).
   // Outdoor-leaning set (original scaffold):
-  napFriendly   Boolean?
-  shaded        Boolean?
-  smooth        Boolean?
-  enclosed      Boolean?
-  freeEntry     Boolean?
-  hasToilets    Boolean?
-  hasParking    Boolean?
-  hasCafe       Boolean?
-  hasPlayground Boolean?
-  dogFriendly   Boolean?
-  wheelchairOk  Boolean?
+  napFriendly             Boolean?
+  shaded                  Boolean?
+  smooth                  Boolean?
+  enclosed                Boolean?
+  freeEntry               Boolean?
+  hasToilets              Boolean?
+  hasParking              Boolean?
+  hasCafe                 Boolean?
+  hasPlayground           Boolean?
+  dogFriendly             Boolean?
+  wheelchairOk            Boolean?
   // Indoor/baby set (added 14 Sep 2026 after the Airbnb-style tag decision —
   // the dataset is 21% cafes and these are what matter there). changing_table,
   // highchair and outdoor_seating are backfillable from OSM keys of the same
@@ -181,8 +181,12 @@ model Track {
 
 model Photo {
   id             String      @id @default(cuid())
+  // While PENDING, r2Key points into the PRIVATE staging bucket and r2Url is null:
+  // unmoderated bytes are never publicly reachable. Approval re-encodes the image
+  // (EXIF stripped) into the public bucket and sets both — see
+  // src/services/photo-moderation.ts.
   r2Key          String      @unique
-  r2Url          String
+  r2Url          String?
   status         PhotoStatus @default(PENDING)
   moderationNote String?
 
@@ -217,6 +221,11 @@ model Review {
   tagsDisputed  String[]
   comment       String?
   anonymous     Boolean  @default(false)
+  // Stars and comments require an account (one written review per parent per
+  // place); tag votes may stay anonymous (userId null). The "one per parent" rule
+  // is a PARTIAL unique index Prisma can't express — it lives only in migration
+  // 20261023120000_photo_staging_and_review_dedupe. `prisma migrate dev` would
+  // see it as drift and offer to drop it: never accept (pitfall #5 territory).
   userId        String?
   user          User?    @relation(fields: [userId], references: [id])
   createdAt     DateTime @default(now())

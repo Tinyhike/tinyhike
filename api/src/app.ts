@@ -6,6 +6,7 @@ import multipart from '@fastify/multipart'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import { PrismaClient } from '@prisma/client'
+import { clientKey } from './lib/client-key.js'
 
 import authRoutes from './routes/auth.js'
 import placesRoutes from './routes/places.js'
@@ -50,12 +51,16 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   // strict default CSP is harmless and adds defense-in-depth.
   await app.register(helmet)
 
-  // Global rate limit (per IP). Individual routes tighten this via `config.rateLimit`
+  // Global rate limit (per client). Individual routes tighten this via `config.rateLimit`
   // — see the auth and review endpoints. Generous default so map panning isn't throttled.
+  // keyGenerator: an IPv6 visitor owns a whole /64, so keying on the full address
+  // would let one machine rotate past every limit. clientKey() folds IPv6 down to
+  // its /64. Route-level configs inherit this generator unless they set their own.
   await app.register(rateLimit, {
     global: true,
     max: 200,
     timeWindow: '1 minute',
+    keyGenerator: (req) => clientKey(req.ip),
   })
 
   await app.register(cors, {
