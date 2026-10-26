@@ -45,6 +45,8 @@ async function backfill() {
   let updated = 0
   const kinds: Record<string, number> = {}
   const applied: Record<string, number> = {}
+  // Which places change, and to what: the run is reviewed from this list.
+  const changes: string[] = []
 
   for (const place of places) {
     const found = details.get(place.osmId!)
@@ -58,6 +60,7 @@ async function backfill() {
     const keys = Object.keys(data)
     if (keys.length === 0) continue
     for (const key of keys) applied[key] = (applied[key] ?? 0) + 1
+    changes.push(`${place.osmId} ${JSON.stringify(data)}`)
     if (!dryRun) await prisma.place.update({ where: { id: place.id }, data })
     updated++
   }
@@ -67,6 +70,7 @@ async function backfill() {
   console.log(`  with at least one equipment kind  ${withEquipment}`)
   console.log(`\n${dryRun ? '[DRY RUN] would update' : 'Updated'} ${updated} places.`)
   for (const [key, count] of Object.entries(applied)) console.log(`  ${key.padEnd(14)} ${count}`)
+  for (const line of changes) console.log(`  ${line}`)
   console.log('\nequipment kinds (places having each):')
   for (const [kind, count] of Object.entries(kinds).sort((a, b) => b[1] - a[1])) {
     console.log(`  ${kind.padEnd(18)} ${count}`)
