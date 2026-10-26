@@ -44,6 +44,7 @@ child in Rotterdam.
 | Descriptions | **No AI enrichment for now**, and never of hidden places. Instead, playground ages and equipment from OSM (display still to design). |
 | Dev and production | **Code is written and tested in `/srv/tinyhike-dev`** (own checkout, database without accounts or reviews, own `.env`); production only takes deploys: git pull, migrate deploy, build, restart (`DEPLOY.md` §3a). |
 | Private playgrounds | **Hidden** when OSM says `access=private`, unless verified (a parent reports one open, an admin verifies it). `access=customers` stays, with "Réservé aux clients" on the sheet. |
+| Brunch restaurants | **Imported as cafés**, hidden until verified: the wide filter (`cuisine` breakfast, brunch, coffee_shop, pancake, lunch, lunchroom), pancake houses included. |
 | `isStrollerWide` label | "Place pour la poussette" / "Ruimte voor de kinderwagen" / "Room for the stroller", matching what a verification checks. |
 
 ---
@@ -59,9 +60,12 @@ child in Rotterdam.
   `GET /api/admin/places`, `PUT`/`DELETE /api/admin/places/:id/verification`.
 - **Adding a café the seeder missed** — `pnpm places:verify add node/<id> --category CAFE`
   creates it, hidden, from one OSM element (brunch places OSM files as restaurants,
-  e.g. By Jarmusch West). Widening the seeder to them: proposal in
-  `docs/plan-cafes-non-verifies.md` §10 (10 restaurants in Rotterdam, 20 with
-  pancake and lunch).
+  e.g. By Jarmusch West).
+- **Brunch restaurants imported as cafés** — the seeder takes `amenity=restaurant`
+  with a brunch cuisine (wide filter, pancake houses included): 19 imported on
+  26 Oct with `ONLY=amenity=restaurant pnpm seed:osm` (dry run first), hidden
+  until verified; By Jarmusch West was already in. The map didn't move (1005
+  public places). The seeder gained `DRY_RUN` and `ONLY`.
 - **Playground details from OSM** — `minAge` / `maxAge` and the equipment kinds
   (`pnpm backfill:playgrounds`). Thin coverage: 61 of 854 playgrounds with
   equipment, 3 with an age. Not displayed yet (proposal in
@@ -78,7 +82,7 @@ child in Rotterdam.
   `pnpm places:verify list --access PRIVATE` lists them.
 - **`isStrollerWide` relabelled** "Place pour la poussette" (web rebuilt).
 - **Migrations generated offline** with `prisma migrate diff`, never `migrate dev`.
-- **647 Vitest tests green** (was 395).
+- **665 Vitest tests green** (was 395).
 - **`docs/MAINTENANCE.md`** — the maintenance window procedure (apt, PostgreSQL,
   PostGIS, Node, reboot, rollback), prepared, not run.
 
@@ -252,10 +256,11 @@ The pitch's core: rate, comment, correct, add. Order:
       session).
 - [ ] Decide how the sheet shows playground ages and equipment
       (`docs/plan-cafes-non-verifies.md` §9).
-- [ ] Decide whether the seeder takes brunch restaurants, hidden like cafés
-      (`docs/plan-cafes-non-verifies.md` §10: strict filter or with pancake/lunch).
+- [ ] Decide whether to import what OSM gained since the first seed: 28
+      playgrounds and 7 parks (~33 would go on the map at once, 2 are private)
+      and 6 cafés (`DRY_RUN=1 pnpm seed:osm` lists them).
 - [ ] **Jerome: photo uploads setup** — the Cloudflare checklist and smoke test
       in `DEPLOY.md` §3c (staging bucket, CORS, lifecycle, token scope,
       `R2_STAGING_BUCKET`).
 - [ ] Admin moderation UI (Phase A step 5), then Claude vision (step 6).
-- [ ] Reload the map UX against the 1319-place dataset (clusters got denser).
+- [ ] Reload the map UX against the 1338-place dataset (clusters got denser).

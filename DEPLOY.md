@@ -47,6 +47,11 @@
       `Place.access`. The API can go first: every row starts OPEN, i.e. visible as
       before. Smoke test: a private playground → 404, a customers-only one → 200
       with `access: CUSTOMERS`, the served bundle says "Place pour la poussette".
+- [x] Brunch restaurants (26 Oct 2026): `git pull`, API, then
+      `DRY_RUN=1 ONLY=amenity=restaurant pnpm seed:osm` (19 names listed), `pg_dump`,
+      the real run: 19 cafés, hidden. `ONLY` matters: a plain seed would also have
+      added 28 playgrounds and 7 parks new in OSM, public at once. Smoke test: still
+      1005 public places, `X-Total-Count` 1004; an imported place → 404.
 - [ ] Photo uploads: one-time Cloudflare setup + browser smoke test (§3c). The UI
       ships with the batch but stays hidden until `R2_STAGING_BUCKET` is set.
 - [ ] Reboot to pick up the pending kernel (`7.0.0-15` → `7.0.0-38` now), with the

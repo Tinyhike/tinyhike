@@ -1,6 +1,6 @@
 # Plan : masquer les cafés non vérifiés
 
-**Statut : exécuté le 26 octobre 2026**, après le feu vert de Jérôme. Ses décisions sont au §7 et le résultat au §8. Le §9 propose un affichage des âges et des jeux (non codé). Le §10 propose d'élargir l'import aux restaurants de brunch (non appliqué). Les §0 à §6 sont la proposition soumise à Jérôme ; ses décisions (§7) et le résultat (§8) la remplacent là où ils diffèrent. Les écarts sont signalés en ligne par « **Exécuté :** ».
+**Statut : exécuté le 26 octobre 2026**, après le feu vert de Jérôme. Ses décisions sont au §7 et le résultat au §8. Le §9 propose un affichage des âges et des jeux (non codé). Le §10 élargit l'import aux restaurants de brunch (filtre large, exécuté le 26/10). Les §0 à §6 sont la proposition soumise à Jérôme ; ses décisions (§7) et le résultat (§8) la remplacent là où ils diffèrent. Les écarts sont signalés en ligne par « **Exécuté :** ».
 
 Décision de Jérôme (26/10) : la carte n'affiche que les aires de jeux, les parcs et les lieux vérifiés. Les cafés restent en base, masqués tant qu'ils ne sont pas vérifiés.
 
@@ -267,7 +267,7 @@ Les questions posées dans la proposition sont gardées ci-dessous (§7 d'origin
 
 **Charge estimée** pour le web (1 et 2) : environ 2 heures, avec les 3 langues, sans changement d'API.
 
-## 10. Élargir l'import aux restaurants de brunch (proposition, non appliquée)
+## 10. Élargir l'import aux restaurants de brunch (exécuté le 26/10, filtre large)
 
 **Pourquoi.** Jérôme n'a pas trouvé By Jarmusch West avec `pnpm places:verify list`. OSM le classe `amenity=restaurant` + `cuisine=breakfast` (`node/11007237505`, Nieuwe Binnenweg 575), et le seeder ne prend que `amenity=cafe` : il n'a jamais été importé. En attendant une décision, `pnpm places:verify add node/<id> --category CAFE` ajoute un tel lieu à la main, masqué jusqu'à sa vérification (fait le 26/10).
 
@@ -292,3 +292,40 @@ Les questions posées dans la proposition sont gardées ci-dessous (§7 d'origin
 6. **Charge** : environ une heure avec les tests. Puis `pnpm seed:osm` et `pnpm backfill:osm-tags` (simulation, puis réel).
 
 **Recommandation** : le filtre strict (10 lieux), plus `add` pour les manques ponctuels. Ajouter les pannenkoekenhuizen est une décision produit pour Jérôme ; ils sont souvent pensés pour les familles.
+
+### Décision et résultat (26/10)
+
+**Décision de Jérôme** : le filtre large, pannenkoekenhuizen compris (`cuisine` breakfast, brunch, coffee_shop, pancake, lunch, lunchroom). Ces restaurants entrent en catégorie `CAFE`, masqués comme candidats à vérifier.
+
+**Exécuté** :
+- `isBrunchRestaurant()` dans `lib/osm.ts`. La requête Overpass prend ces restaurants, `kindOf()` en fait des cafés et `mapOsmTags()` leur donne `hasCafe`, comme à tout café.
+- Le seeder gagne `DRY_RUN=1`, qui liste ce qu'il ajouterait, et `ONLY=key=value`, qui ne garde qu'un type d'élément. Le second était nécessaire : un import complet aurait aussi apporté ce qu'OSM a gagné depuis le premier import (28 aires de jeux, 7 parcs, 6 cafés). Une trentaine de ces lieux seraient apparus aussitôt sur la carte.
+- Dans le dev d'abord, puis en prod : `DRY_RUN=1 ONLY=amenity=restaurant pnpm seed:osm`, un `pg_dump`, puis l'import réel.
+- **19 restaurants importés**, tous nommés, tous `CAFE` et non vérifiés. By Jarmusch West était déjà en base (ajouté avec `add`), ce qui fait 20 lieux de brunch.
+- **La carte n'a pas bougé** : 1005 lieux publics, `X-Total-Count` 1004.
+
+| Lieu | OSM | `cuisine` |
+|---|---|---|
+| Baker & Moore | node/2610210851 | sandwich;salad;breakfast |
+| Brasserie Maxim's | node/2786442836 | international;lunch |
+| De Machinist | node/1140907306 | coffee_shop;french;sandwich |
+| De Pannenkoekenboot | node/2399267238 | pancake |
+| FC Kip | node/4993078331 | international;lunch;diner |
+| Het Leerstation | node/848888060 | sandwich;pastry;coffee_shop |
+| Het Theehuis | way/275591110 | coffee_shop |
+| Juffrouw van Zanten Rotterdam West | node/4862620790 | breakfast |
+| Lider BBQ Villa | node/13157398685 | turkish;grill;breakfast;diner |
+| Lunchroom Devon | node/11290903398 | lunch |
+| Lunchroom Leuk! | node/2838129006 | lunchroom |
+| Pancakes by June | node/2805488858 | pancake;breakfast;lunch |
+| Pannenkoe | node/2786325790 | pancake |
+| Pannenkoe | node/2838127312 | pancake |
+| Pannenkoekenhuis "De Oude Maas" | node/2745001081 | pancake |
+| Pannenkoekenhuis De Nachtegaal | node/2802966602 | pancake |
+| Petit Retaurant Schollebos (sic, OSM) | node/353336639 | pancake |
+| Restobar Colette | node/13337712636 | french;italian;spanish;breakfast;diner;lunch |
+| SUE | node/2610252110 | lunch;breakfast |
+
+**À noter** :
+- Le filtre large prend aussi des restaurants dont le brunch n'est qu'une partie de la carte : FC Kip, Lider BBQ Villa, Brasserie Maxim's. La visite décidera.
+- Les restaurants sans `cuisine` (De Brunch Club, Lunchroom Fröbel, Broodje Aap Lunchroom) restent à ajouter avec `places:verify add`.
