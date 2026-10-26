@@ -93,6 +93,12 @@ const TAG_ONLY = { score: null, comment: null } satisfies Prisma.ReviewWhereInpu
 // repeats a row.
 const REVIEW_ORDER = [{ createdAt: 'desc' }, { id: 'desc' }] satisfies Prisma.ReviewOrderByWithRelationInput[]
 
+/**
+ * Detail-only columns, left out of the map list: the sheet loads them with the
+ * detail, and every map pan would otherwise carry them for up to 500 pins.
+ */
+const DETAIL_ONLY_OMIT = { minAge: true, maxAge: true, playEquipment: true } as const satisfies Prisma.PlaceOmit
+
 const NOT_FOUND = { error: 'NotFound', message: 'Place not found' } as const
 
 /**
@@ -251,7 +257,7 @@ export default async function placesRoutes(app: FastifyInstance) {
       // Who submitted or verified a place is internal: joined with a public list
       // owner's id it would attribute every contribution to a named parent. The
       // verification date stays private too.
-      omit: PRIVATE_PLACE_OMIT,
+      omit: { ...PRIVATE_PLACE_OMIT, ...DETAIL_ONLY_OMIT },
       include: {
         translations: { where: { locale } },
         // Explicit select: a Photo row also carries uploadedById, r2Key and the

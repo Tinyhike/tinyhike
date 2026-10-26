@@ -13,6 +13,7 @@
     "enrich:pending": "tsx src/jobs/enrich.ts",
     "seed:osm": "tsx src/jobs/seed-osm.ts",
     "backfill:osm-tags": "tsx src/jobs/backfill-osm-tags.ts",
+    "backfill:playgrounds": "tsx src/jobs/backfill-playground-details.ts",
     "photos:moderate": "tsx src/jobs/moderate-photos.ts",
     "places:verify": "tsx src/jobs/verify-places.ts",
     "test": "vitest run",

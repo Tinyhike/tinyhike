@@ -144,6 +144,10 @@ describe('GET /api/places', () => {
       verifiedAt: true,
       // equal to the verification instant once a café is verified
       updatedAt: true,
+      // detail-only, kept off the map payload
+      minAge: true,
+      maxAge: true,
+      playEquipment: true,
     })
     expect(arg.include.photos).toEqual({ where: { status: 'APPROVED' }, take: 1, select: { id: true, r2Url: true } })
   })

@@ -106,6 +106,14 @@ model Place {
   verifiedById String?
   verifiedBy   User?     @relation("verifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
 
+  // Playground details imported from OSM (jobs/backfill-playground-details.ts):
+  // the playground's own min_age / max_age, and the kinds of play equipment mapped
+  // inside it (`playground=*`: swing, slide, sandpit…). null / empty = OSM says
+  // nothing, never "none".
+  minAge        Int?
+  maxAge        Int?
+  playEquipment String[] @default([])
+
   submittedById String?
   submittedBy   User?   @relation(fields: [submittedById], references: [id])
 

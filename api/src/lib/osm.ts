@@ -11,6 +11,7 @@ import type { PlaceCategory } from '@prisma/client'
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
 
 export interface OverpassElement {
+  type?: string
   id: number
   lat?: number
   lon?: number
@@ -43,7 +44,14 @@ const MAX_ATTEMPTS = 5
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-export async function fetchOverpass(bbox: string): Promise<OverpassElement[]> {
+/**
+ * Run an Overpass query over a bbox. `buildQuery` defaults to the places query;
+ * the playground-details job passes its own (lib/osm-playgrounds.ts).
+ */
+export async function fetchOverpass<T extends OverpassElement = OverpassElement>(
+  bbox: string,
+  buildQuery: (bbox: string) => string = overpassQuery,
+): Promise<T[]> {
   let lastError = ''
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -51,7 +59,7 @@ export async function fetchOverpass(bbox: string): Promise<OverpassElement[]> {
       method: 'POST',
       // Overpass (Apache) returns 406 to requests with no User-Agent. Must be set.
       headers: { 'User-Agent': 'TinyHike/1.0 (hello@tinyhike.com)' },
-      body: `data=${encodeURIComponent(overpassQuery(bbox))}`,
+      body: `data=${encodeURIComponent(buildQuery(bbox))}`,
     })
 
     // Guard before parsing: Overpass serves HTML error pages (406/429/504) that would
@@ -74,7 +82,7 @@ export async function fetchOverpass(bbox: string): Promise<OverpassElement[]> {
       throw new Error(`Overpass returned non-JSON (${contentType}): ${(await res.text()).slice(0, 200)}`)
     }
 
-    const data = (await res.json()) as { elements: OverpassElement[] }
+    const data = (await res.json()) as { elements: T[] }
     return data.elements
   }
 
@@ -94,7 +102,7 @@ export function elementCoords(el: OverpassElement): { lat: number; lng: number }
  * query returned almost only nodes, but collides as soon as ways and relations are
  * included, and `Place.osmId` is unique, so a collision is a hard failure.
  */
-export function osmIdFor(el: OverpassElement & { type?: string }): string {
+export function osmIdFor(el: OverpassElement): string {
   return `osm:${el.type ?? 'node'}/${el.id}`
 }
 
