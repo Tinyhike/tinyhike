@@ -44,7 +44,8 @@ import { fetchOsmElement, type OsmRef } from '../lib/osm-api.js'
 export const VERIFICATION_POINTS = {
   // "Entrée praticable en poussette": the step-free tag ("Sans marche", "Step-free").
   stepFree: 'wheelchairOk',
-  // "Place pour la poussette à l'intérieur" ("Passage large", "Wide for strollers").
+  // "Place pour la poussette à l'intérieur" (labelled "Place pour la poussette",
+  // "Ruimte voor de kinderwagen", "Room for the stroller" since 26 Oct 2026).
   strollerRoom: 'isStrollerWide',
   // "Table à langer".
   changingTable: 'hasChangingTable',
