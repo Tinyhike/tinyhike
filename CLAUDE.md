@@ -455,7 +455,7 @@ These are explicitly out of scope for the MVP. Bringing them up wastes a session
 - Real-time features (WebSockets, live location sharing, presence)
 - Notifications system (push, email digest is OK as a cron)
 - Multi-city support beyond Rotterdam (defer to month 3+)
-- Native mobile apps (PWA only, install from browser)
+- ~~Native mobile apps (PWA only)~~ — no longer a non-goal since 26 Oct 2026 (Jerome): the Expo (React Native) app in `mobile/`, Android first, is milestone 1a (`ROADMAP.md`). The PWA stays in production meanwhile
 - Advanced GPS recording (basic `Track` model is fine, no fancy real-time post-processing)
 - Ads, dynamic pricing, complex monetization (Ko-fi donations only at launch)
 - Self-hosted map tiles, custom basemaps (Mapbox free tier is enough for MVP)

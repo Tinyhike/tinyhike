@@ -1,7 +1,8 @@
 # TinyHike — Roadmap & To-Do
 
 > Living planning doc. Pairs with `CLAUDE.md` (source-of-truth state) and `DESIGN.md`
-> (visual system). Last updated: **26 October 2026** — unverified cafés hidden,
+> (visual system). Last updated: **27 October 2026** — the native app (milestone 1a)
+> starts: Expo in `mobile/`, Android first. Before that, 26 October 2026: unverified cafés hidden,
 > admin verification of places, playground ages and equipment from OSM.
 > Previous updates: 23 October 2026 (reviews + photo upload), 14 September 2026
 > (production deploy, dataset rebuilt, product recentering with Jerome).
@@ -46,6 +47,16 @@ child in Rotterdam.
 | Private playgrounds | **Hidden** when OSM says `access=private`, unless verified (a parent reports one open, an admin verifies it). `access=customers` stays, with "Réservé aux clients" on the sheet. |
 | Brunch restaurants | **Imported as cafés**, hidden until verified: the wide filter (`cuisine` breakfast, brunch, coffee_shop, pancake, lunch, lunchroom), pancake houses included. |
 | `isStrollerWide` label | "Place pour la poussette" / "Ruimte voor de kinderwagen" / "Room for the stroller", matching what a verification checks. |
+
+### Decisions locked (26–27 Oct 2026, Jerome): the native app
+| Question | Decision |
+|---|---|
+| Native or PWA | **A native app**, Expo (React Native), in a new `mobile/` folder of this repo, written in `/srv/tinyhike-dev`. "PWA only" is no longer a non-goal; the PWA stays in production meanwhile. |
+| Platforms | **Android first.** The iPhone comes before milestone 1b. |
+| Package ids | `com.tinyhike.app`; the development build is `com.tinyhike.app.dev`, named "TinyHike (dev)", so both can live on one phone. |
+| Map | `@rnmapbox/maps` (native Mapbox v11), Mapbox **Standard** style. |
+| Dev loop | An EAS development build installed once on Jerome's Android, plus Metro on the VPS through the Expo tunnel. |
+| Design | Icons, pins and the Plan / Satellite toggle are designed in parallel in Claude Design; the code only keeps a clean screen until then. |
 
 ---
 
@@ -151,6 +162,16 @@ child in Rotterdam.
 ---
 
 ## Phase plan (reordered around the pitch)
+
+### Milestone 1a — the native app, Android (started 27 Oct 2026)
+1. **The groundwork** (in progress): the Expo project in `mobile/`, a map screen
+   (Rotterdam on opening, the user's position, Mapbox Standard), and tapping a
+   place of the basemap (e.g. By Jarmusch West) shows its name and category in a
+   bottom sheet. That tap decides how the app finds places. EAS development build
+   on Jerome's Android, Metro on the VPS. **No API call, nothing in production.**
+2. The app reads the dev API (`api-dev`).
+
+The iPhone build comes before milestone 1b.
 
 ### Phase A — The contributive loop (in progress)
 The pitch's core: rate, comment, correct, add. Order:
@@ -269,3 +290,7 @@ The pitch's core: rate, comment, correct, add. Order:
       `R2_STAGING_BUCKET`).
 - [ ] Admin moderation UI (Phase A step 5), then Claude vision (step 6).
 - [ ] Reload the map UX against the 1379-place dataset (clusters got denser).
+- [ ] **Jerome: native app, milestone 1a step 1** — a public Mapbox token
+      dedicated to the app (`pk.`, no URL restriction), `npx eas-cli@latest login`
+      in his own SSH session as `tinyhike`, then install the development build on
+      his Android and tap a place.
