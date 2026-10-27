@@ -39,7 +39,7 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
   - **nginx 1.28.3** terminates TLS with a **Cloudflare Origin cert** (`/etc/ssl/cloudflare/tinyhike.{pem,key}`, `*.tinyhike.com`, expires 2041), serves `web/dist` with SPA fallback, and proxies `/api/*` to `127.0.0.1:3000`
   - nginx resolves the **real visitor IP** from `CF-Connecting-IP`, and returns **403 to any request that didn't come through Cloudflare**
   - Config lives in git: `ops/systemd/tinyhike-api.service`, `ops/nginx/tinyhike.conf`, `ops/nginx/cloudflare-*.conf` (regenerate with `ops/scripts/update-cloudflare-ips.sh`), and the cloud-init drop-in `ops/systemd/cloud-init-local.service.d/10-after-apparmor.conf` (`docs/MAINTENANCE.md`, "cloud-init")
-- **API Fastify 5** — all routes loaded (auth, places, routes, photos, lists, admin), helmet, rate limiting, `trustProxy`, global error handler. Dev: `cd /srv/tinyhike-dev/api && pnpm dev` on `127.0.0.1:3100` (`HOST`, `PORT`); production listens on `0.0.0.0:3000` behind nginx
+- **API Fastify 5** — all routes loaded (auth, places, routes, photos, lists, admin), helmet, rate limiting, `trustProxy`, global error handler. Dev: `cd /srv/tinyhike-dev/api && pnpm dev` on `127.0.0.1:3100` (`HOST`, `PORT`); production listens on `127.0.0.1:3000` behind nginx (since 27 Oct 2026: `HOST` defaults to `127.0.0.1` in `api/src/index.ts`, an empty `HOST=` too, so the API no longer relies on UFW alone, and `trustProxy` can't be fed a forged `X-Forwarded-For` from outside)
   - **Rate-limit keys fold IPv6 to its /64** — every `keyGenerator` goes through `clientKey(req.ip)` (`api/src/lib/client-key.ts`): IPv4 as-is, IPv4-mapped IPv6 back to IPv4, any other IPv6 cut to its /64. One machine owns a whole /64, so the full address would let it rotate past every limit. The photo routes key per account instead (`user:<id>`, hook `preHandler` so it runs after `requireAuth`).
   - **Session cookie is `__Host-session`** (HttpOnly, Secure, SameSite=Lax, Path=/, no Domain; `SESSION_COOKIE` / `SESSION_COOKIE_OPTIONS` in `api/src/plugins/auth.ts`). The prefix stops a sibling subdomain (`photos.` serves user content) from planting or shadowing a session. Clearing it needs the same Secure + Path=/ attributes, or browsers ignore the clear. Three guards: `requireAuth` (401), `optionalAuth` (attaches the session when valid, never replies), `requireAdmin`.
   - **Magic link returns you where you were** — `POST /api/auth/magic` takes an optional `next` (allowlist `^/(places/<id>|profile|lists)?$`, checked again on `/verify`); an invalid `next` falls back to `/`, never an error.
@@ -58,7 +58,7 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
 - **Web Vite 5 + React 18 + Mapbox GL 3** — clustered Rotterdam map. Dev: `cd /srv/tinyhike-dev/web && pnpm dev` on `127.0.0.1:5173`, proxies `/api/*` to the dev API on :3100 (`DEV_HOST`, `DEV_API_TARGET` in `web/.env`)
 - **1379 places from OSM** (26 Oct 2026: 882 playgrounds, 166 parks, 14 picnic sites, 300 cafés (280 `amenity=cafe` and 20 brunch restaurants), 17 that no longer match OSM). **1038 are public** (`X-Total-Count` 1037 on the default bbox), 341 hidden: the cafés and the 17 until verified, plus 22 playgrounds and 2 parks OSM marks `access=private`. 14 playgrounds, 1 picnic site and 1 café are `access=customers`. The last full `pnpm seed:osm` (26 Oct) added the 41 places OSM had gained since the first one (28 playgrounds, 7 parks, 6 cafés). 13 playgrounds, 1 picnic site and 1 café are `access=customers`. `Place.category` comes from the OSM tag (`categoryOf()` in `lib/osm.ts`, filled by `pnpm backfill:osm-tags`). 381 were enriched by Claude into nl/fr/en, 260 of them cafés: about 11% of the public places have a description. **No AI enrichment for now** (Jerome, 26 Oct), and `enrich.ts` only ever takes public places.
 - **Playground details from OSM** — `minAge`, `maxAge` (`min_age` / `max_age`) and `playEquipment` (`playground=*` features inside the playground's outline), filled by `pnpm backfill:playgrounds`, only where unset. Coverage is thin: 62 of 882 playgrounds have equipment, 3 have an age. Returned by the detail (not by the map list); **not displayed yet** (proposal in `docs/plan-cafes-non-verifies.md` §9).
-- **Vitest** — 665 tests green in 16 files via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens). Prisma is mocked (`api/test/helpers.ts`), R2 is `vi.mock`ed: no test touches the network or the DB. `vitest.config.ts` pins `EMAIL_DELIVERY=resend` and a fake `RESEND_API_KEY`, so the suite gives the same result in either checkout (pitfall 25)
+- **Vitest** — 668 tests green in 17 files via a `buildApp()` factory in `api/src/app.ts` (single source of truth for app wiring; `index.ts` only listens). Prisma is mocked (`api/test/helpers.ts`), R2 is `vi.mock`ed: no test touches the network or the DB. `vitest.config.ts` pins `EMAIL_DELIVERY=resend` and a fake `RESEND_API_KEY`, so the suite gives the same result in either checkout (pitfall 25)
 - **Magic-link auth works end to end in production** (verified 14 Sep 2026): email delivered by Resend, `/api/auth/verify` hit on the web origin, 302, session cookie usable by the app
 - **Web app has a real shell** — tab bar (Carte/Listes/Profil), place detail as a sheet over a still-mounted map, loading/error states everywhere, interface in nl/fr/en with a switcher, bright toy-box identity (see `DESIGN.md`), generated PWA icons
   - The place sheet carries the amenities (19 tri-state tags with one-tap votes), the rating header + reviews + review form, and "Add a photo" (re-encoded on the device, PUT with progress, cancel, retry).
@@ -170,7 +170,7 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
 │   │       ├── moderate-photos.ts    # pnpm photos:moderate list | approve | reject | purge-legacy
 │   │       └── verify-places.ts      # pnpm places:verify list | verify | unverify | add
 │   ├── test/                   # Vitest: mocked Prisma (helpers.ts), R2 mocked, never the network
-│   └── Dockerfile              # not used yet, kept for future Docker setup
+│   └── Dockerfile              # not used yet, kept for future Docker setup; the container must set HOST=0.0.0.0
 ├── web/
 │   ├── .env                    # VITE_API_URL (empty, uses Vite proxy) + VITE_MAPBOX_TOKEN
 │   ├── package.json            # scripts: dev, build, preview
@@ -206,7 +206,7 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
 │   ├── nginx.conf
 │   └── Dockerfile
 └── ops/
-    ├── docker-compose.yml      # not used yet, for future Traefik + DB + api + web + marketing setup
+    ├── docker-compose.yml      # not used yet, for future Traefik + DB + api + web + marketing setup (api: HOST=0.0.0.0)
     ├── scripts/
     │   ├── provision.sh        # idempotent VPS setup, already executed
     │   ├── dev-db-refresh.sh   # rebuild tinyhike_dev from production, without accounts or reviews
@@ -241,7 +241,7 @@ TELEGRAM_BOT_TOKEN    # shared with OpenClaw on Hostinger
 TELEGRAM_USER_ID      # 7581563177
 NODE_ENV              # production (even in dev for now)
 PORT                  # 3000
-HOST                  # unset in production (0.0.0.0, behind nginx); 127.0.0.1 in dev
+HOST                  # unset in production: defaults to 127.0.0.1 (index.ts), behind nginx; 127.0.0.1 in dev. Only a container would set 0.0.0.0
 EMAIL_DELIVERY        # unset or "resend" in production; "log" in dev only (refused when NODE_ENV=production)
 PUBLIC_BASE_URL       # https://app.tinyhike.com
 API_BASE_URL          # https://api.tinyhike.com

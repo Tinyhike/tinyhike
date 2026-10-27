@@ -152,7 +152,7 @@ systemctl --failed --no-pager                     # 0 unité en échec (cloud-in
 for s in postgresql nginx tinyhike-api fail2ban ufw ssh.socket; do printf '%-14s %s\n' $s "$(systemctl is-active $s)"; done
 sudo ufw status | head -3                         # active, 22/80/443
 sudo fail2ban-client status sshd | tail -3
-ss -ltnp                                          # 22, 80, 443, 127.0.0.1:5432, :3000. Rien sur 5173
+ss -ltnp                                          # 22, 80, 443, 127.0.0.1:5432, 127.0.0.1:3000 (jamais 0.0.0.0:3000). Rien sur 5173
 node -v                                           # v22.23.4 le 27/10
 sudo journalctl -b -p err --no-pager | tail -20   # erreurs du boot
 

@@ -124,6 +124,8 @@ Docker is **not installed** on the VPS. Two paths:
 - **➖** Requires installing Docker; must containerize + move Postgres into a
   volume or point containers at native Postgres; bigger blast radius for a first
   deploy; more to debug under launch pressure.
+- The API container must set `HOST=0.0.0.0`: since 27 Oct 2026 the API listens on
+  `127.0.0.1` by default, which nothing outside the container can reach.
 
 **Recommendation:** **Option A now**, revisit Docker (Option B) when a second dev
 joins or services multiply — exactly the trigger CLAUDE.md #2 names. Rest of this
@@ -191,7 +193,7 @@ the backfills a deploy calls for.
 | `node_modules` | its own | its own, installed as copies (`--package-import-method=copy`): no file shared with production |
 | Database | `tinyhike`, role `tinyhike` | `tinyhike_dev`, role `tinyhike_dev` (password only in the dev `.env`; it can't read production's tables) |
 | Data | everything | production's places, routes and translations; **no accounts, reviews, sign-in tokens, photos, lists, follows or tracks** |
-| API | systemd `tinyhike-api`, `0.0.0.0:3000` behind nginx | `pnpm dev` in tmux, `127.0.0.1:3100` (`HOST`, `PORT` in the dev `.env`) |
+| API | systemd `tinyhike-api`, `127.0.0.1:3000` behind nginx (`HOST` unset: the default, since 27 Oct 2026) | `pnpm dev` in tmux, `127.0.0.1:3100` (`HOST`, `PORT` in the dev `.env`) |
 | Web | `web/dist` served by nginx | Vite on `127.0.0.1:5173`, proxying `/api` to `:3100` (`DEV_HOST`, `DEV_API_TARGET` in `web/.env`). 5173 is the port the Mapbox token allows |
 | Sign-in e-mails | sent by Resend | written to the API's log (`EMAIL_DELIVERY=log`, refused under `NODE_ENV=production`) |
 | Secrets | production's `.env` | none of production's: no Resend, R2, Anthropic or Telegram key, so photo uploads are off and enrichment can't run |
