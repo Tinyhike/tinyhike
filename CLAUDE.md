@@ -2,7 +2,7 @@
 
 > **For agents (Claude Code, claude.ai, others).** Read this first, every session, before touching any code, command, or commit. This file reflects the **actual state** of the project, not the original aspirations.
 
-Last updated: 27 October 2026 — **maintenance window done** (kernel 7.0.0-38, PostgreSQL 16.15, PostGIS 3.6.4, Node 22.23.4; `docs/MAINTENANCE.md`). Previous: 26 October 2026, **dev separated from production** (`/srv/tinyhike-dev`, see "Dev and production" below), unverified cafés hidden (place category + admin verification), playground ages and equipment imported from OSM, `places:verify add` (a place the seeder missed, from one OSM element).
+Last updated: 27 October 2026 — **native app started** (milestone 1a step 1: Expo SDK 58 in `mobile/`, map only, no API call; see "Native app" below), and the **maintenance window done** (kernel 7.0.0-38, PostgreSQL 16.15, PostGIS 3.6.4, Node 22.23.4; `docs/MAINTENANCE.md`). Previous: 26 October 2026, **dev separated from production** (`/srv/tinyhike-dev`, see "Dev and production" below), unverified cafés hidden (place category + admin verification), playground ages and equipment imported from OSM, `places:verify add` (a place the seeder missed, from one OSM element).
 
 ---
 
@@ -69,6 +69,7 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
 - **DNS + SSL**: `tinyhike.com` (+ `app`, `api`, `photos`, `www`) and `tinyhike.app` (redirect 301) live on Cloudflare, proxied 🟠, SSL Full strict
 
 ### ⏳ What's not done yet
+- **Native app, milestone 1a step 1 (in progress since 27 Oct 2026)** — `mobile/`: Expo SDK 58 (React Native 0.88), Expo Router, `@rnmapbox/maps` 10.3.11 (Mapbox Maps SDK Android 11.33), `expo-location`. One screen: the map opens on Rotterdam in the Mapbox **Standard** style (the PWA uses `outdoors-v12`), "Ma position" asks for location on its first tap, and tapping a place of the basemap opens a bottom sheet with its name and category. The data comes from the map tiles: **no API call, nothing in production**. `@rnmapbox/maps` has no featureset or Interactions API, so the tap uses `queryRenderedFeaturesInRect` (a 16 dp square). Whether that returns Standard's POIs on Android decides the next step; Metro's log prints what each tap returned. The code is typechecked and bundles for Android; it has **not run on a phone yet**. Waiting for the app's Mapbox token, Jerome's Expo login, then the first EAS development build.
 - **Photo uploads are off in production** until Jerome does the one-time Cloudflare setup in `DEPLOY.md` §3c: create the private staging bucket, set its CORS and its `uploads/` lifecycle rule, widen the R2 token to both buckets, set `R2_STAGING_BUCKET`. The code ships dark: the web hides the button until then.
 - **No admin UI yet (CLI only)** — photos are moderated with `pnpm photos:moderate` on the VPS (or the admin-only `/api/admin/photos` routes), proposals with `PATCH /api/admin/places/:id`, and places are verified with `pnpm places:verify` (or `GET /api/admin/places`, `PUT`/`DELETE /api/admin/places/:id/verification`). No Claude vision auto-moderation either: every photo waits for a human.
 - **No way to set a handle** — `User.handle` has no writer, so every review shows as "Un parent". Signed reviews need a product decision first (handles vs first names, opt-in toggle).
@@ -105,6 +106,7 @@ Since 14 Sep 2026 the model has 19 tags (8 indoor/baby ones added, `hasChangingT
 ### Application
 - **API** — Node.js + Fastify v5 + Prisma 6 + TypeScript strict + ESM modules
 - **Web** — React 18 + Vite 5 + Mapbox GL JS v3 + TanStack Query v5 + React Router v6 + vite-plugin-pwa
+- **Mobile** — Expo SDK 58 (React Native 0.88, New Architecture) + Expo Router + TypeScript strict + `@rnmapbox/maps` (native Mapbox v11) + `expo-location`; built by EAS Build (development build: `com.tinyhike.app.dev`, "TinyHike (dev)"), JS served by Metro on the VPS
 - **Marketing** — static HTML (`marketing/index.html`, Dutch copy), served by nginx in prod (not yet)
 - **Auth** — Magic-link email via Resend → JWT in HttpOnly cookie via `@fastify/cookie` + `jose`
 - **Photos** — Cloudflare R2 via `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`
@@ -201,6 +203,16 @@ IP `69.62.105.48`. Runs n8n + OpenClaw for Jerome's personal projects. **Cron jo
 │           ├── AuthPage.tsx    # magic-link form (carries `next`)
 │           ├── ListsPage.tsx
 │           └── ProfilePage.tsx # account + language switcher + logout
+├── mobile/                     # the native app (Expo), its own pnpm project like api/ and web/
+│   ├── .env                    # EXPO_PUBLIC_MAPBOX_TOKEN — never commit (.env.example is the template)
+│   ├── app.config.ts           # APP_VARIANT=development → com.tinyhike.app.dev, "TinyHike (dev)"
+│   ├── eas.json                # EAS build profiles: development (dev client, internal, APK)
+│   ├── pnpm-workspace.yaml     # packageImportMethod: copy (no hard link shared with production)
+│   ├── AGENTS.md               # Expo's own notes for agents (read the versioned docs, never memory)
+│   └── src/
+│       ├── app/                # Expo Router: _layout.tsx (Mapbox token), index.tsx (the map)
+│       ├── components/         # PlaceSheet.tsx: the tapped place, at the bottom
+│       └── lib/                # basemap-place.ts (which rendered feature is a place), colors.ts
 ├── marketing/
 │   ├── index.html              # static landing page, Dutch
 │   ├── nginx.conf
@@ -259,6 +271,9 @@ DEV_API_TARGET        # dev checkout only: http://127.0.0.1:3100
 ### Dev `.env` (`/srv/tinyhike-dev/.env`, chmod 600)
 Its own `DATABASE_URL` (role and database `tinyhike_dev`), its own `JWT_SECRET`, `NODE_ENV=development`, `HOST=127.0.0.1`, `PORT=3100`, `PUBLIC_BASE_URL=http://localhost:5173`, `EMAIL_DELIVERY=log`. **Never a production secret**: no Resend, R2, Anthropic or Telegram key (`DEPLOY.md` §3a).
 
+### Mobile `.env` (`/srv/tinyhike-dev/mobile/.env`, chmod 600)
+`EXPO_PUBLIC_MAPBOX_TOKEN`: the public `pk.` token dedicated to the app (no URL restriction: a native app sends no origin). Metro inlines every `EXPO_PUBLIC_*` value into the JavaScript bundle, so only public values go there. EAS builds get the same variable from EAS environment variables (environment `development`), not from this file. No Mapbox secret download token: the Maven repository has not required one since Mapbox dropped it (checked 27 Oct 2026).
+
 ### Source of truth for secrets
 **Bitwarden vault** owned by Jerome. Never read or write secrets to any other location. Never commit `.env` or any file containing real secrets.
 
@@ -296,6 +311,22 @@ Then browse `http://localhost:5173` on laptop. To sign in, ask for a link: it is
 
 ### Detaching (do NOT exit)
 `Ctrl+B` then `D` — session keeps running. Reattach with `tmux attach -t tinyhike` anytime.
+
+### A mobile session (the native app)
+The development build, "TinyHike (dev)", is installed once on Jerome's Android. It loads its JavaScript from Metro on the VPS, through the Expo tunnel.
+
+```bash
+# In a tmux pane. The tunnel needs an Expo login on the VPS (once, Jerome: npx eas-cli@latest login)
+cd /srv/tinyhike-dev/mobile && npx expo start --dev-client --tunnel
+# On the phone: scan the QR code shown in the pane, or open TinyHike (dev) and enter the URL it prints.
+# End of session: Ctrl+C in that pane.
+```
+
+- **Stop Metro outside sessions.** Measured on 27 Oct 2026, without the tunnel, after one Android bundle: about 610 MB for the Expo CLI process plus 75 MB for the `npx` wrapper. The server went from 1.03 to 1.62 GB used, with 2.19 GB of 3.8 GB still available and no swap; the production API, PostgreSQL and a Claude Code session were running alongside. The first Android bundle takes about 15 s. Add the dev API and Vite and memory gets tight. And while Metro is up, the tunnel exposes the dev server at a public URL.
+- Metro listens on `*:8081`. UFW keeps 8081 closed, so the phone reaches it only through the tunnel.
+- Since SDK 58 the tunnel is `@expo/ws-tunnel`, built into Expo CLI, and it needs an Expo login. ngrok remains only as the legacy `--tunnel ngrok`, so `@expo/ngrok` is not a dependency.
+- You need a new development build only when native code or `app.config.ts` changes: a library with native code, a plugin, a permission. Build it with `cd /srv/tinyhike-dev/mobile && npx eas-cli@latest build --profile development --platform android`. JavaScript changes reload over Metro.
+- Add packages with `npx expo install <pkg>`: it picks the SDK-compatible version and runs `pnpm add`, which installs copies. Then check with `pnpm typecheck` and `npx expo-doctor`.
 
 ### Commands you'll use often
 ```bash
@@ -433,6 +464,8 @@ These are real bugs we hit. Reading this list saves 30 min each time.
 24. **`NOT` over a nullable column skips the NULL rows** — Postgres logic is three-valued: for a place whose `category` is NULL, `category IN (…)` is unknown, and `NOT (unknown)` is still unknown, so the row matches neither a filter nor its negation. `{ NOT: publicPlaceWhere }` would silently miss every place with no category, exactly the hidden ones. Count hidden places by subtraction (total − public), as `GET /api/admin/stats` does, or test `category: null` explicitly. The JS side has the mirror trap: in a test fixture that lacks `verifiedAt`, `verifiedAt !== null` is true, so `isPublicPlace()` compares with `!= null` to stay closed on undefined.
 
 25. **Tests read the checkout's `.env`** — `app.ts` loads `.env` through dotenv, which never overrides a variable already set. In the dev checkout that `.env` says `EMAIL_DELIVERY=log` and has no Resend key, so building the app in tests either took the log path or threw `Missing API key` (265 failures on the first run). `vitest.config.ts` pins `EMAIL_DELIVERY=resend` and a fake `RESEND_API_KEY`: the suite gives the same result in the prod and the dev checkout, and no test holds the real key. Anything new a test relies on goes there too, never into a `.env`.
+
+26. **pnpm 11 skips releases younger than a day** — its built-in `minimumReleaseAge` (1440 minutes) is non-strict: `pnpm add <pkg>`, and `npx expo install`, which calls it, quietly take the newest version published more than a day ago instead of `latest`. On 27 Oct 2026 `@rnmapbox/maps` came in as 10.3.11 while `latest` was 10.3.15, published that morning. That delay is a protection (a hijacked release is usually pulled within hours): read the version that landed in `package.json` rather than assuming `latest`, and ask Jerome before working around it for a fix released today.
 
 ---
 
