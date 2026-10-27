@@ -1,0 +1,4 @@
+# mobile/ is its own pnpm project, like api/ and web/. Packages are copied from
+# the store, never hard-linked: no file under node_modules is shared with
+# production's (DEPLOY.md §3a).
+packageImportMethod: copy
