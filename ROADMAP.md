@@ -88,7 +88,7 @@ child in Rotterdam.
 - **Migrations generated offline** with `prisma migrate diff`, never `migrate dev`.
 - **665 Vitest tests green** (was 395).
 - **`docs/MAINTENANCE.md`** — the maintenance window procedure (apt, PostgreSQL,
-  PostGIS, Node, reboot, rollback), prepared, not run.
+  PostGIS, Node, reboot, rollback), prepared 26 Oct, run by Jerome on 27 Oct.
 
 ## What the 23 October 2026 batch delivered
 
@@ -197,7 +197,6 @@ The pitch's core: rate, comment, correct, add. Order:
 
 - Map payload: ~340 KB per pan (full Place objects). Fine on wifi, heavy on 4G —
   a slim `/api/places` projection (id, lat, lng, name, key tags) would cut ~80%.
-- Kernel reboot pending on the VPS (`7.0.0-15` → `7.0.0-31`; systemd makes it safe).
 - `marketing/index.html` not deployed (apex + www have no origin server block);
   needs OG/Twitter meta + favicon before sharing in parent groups.
 - Vestigial `CLAUDE` value in `PlaceSource` enum (provenance now via `enrichedAt`).
@@ -256,8 +255,11 @@ The pitch's core: rate, comment, correct, add. Order:
 - [ ] **Jerome: push the 26 Oct commits**, then sign out and in again: the ADMIN
       role is read from the session.
 - [ ] **Jerome: verify the first cafés** (`pnpm places:verify`, see `CLAUDE.md`).
-- [ ] **Jerome: maintenance window** (`docs/MAINTENANCE.md`, from his own SSH
-      session).
+- [x] **Jerome: maintenance window** (done 27 Oct: kernel 7.0.0-38, PostgreSQL
+      16.15, PostGIS 3.6.4, Node 22.23.4; `docs/MAINTENANCE.md`).
+- [ ] **Jerome: after the maintenance** — delete the Hetzner snapshot
+      `pre-maint-27oct` around 3 Nov, then purge the old kernels' residual configs
+      (`docs/MAINTENANCE.md`, "Plus tard").
 - [ ] Decide how the sheet shows playground ages and equipment
       (`docs/plan-cafes-non-verifies.md` §9).
 - [x] Import what OSM gained since the first seed (26 Oct: 41 places, 33 visible).

@@ -6,6 +6,8 @@
 
 > **Mise à jour du 26 octobre 2026, suite.** Les cafés non vérifiés sont masqués (catégorie de lieu et vérification par un admin, voir `docs/plan-cafes-non-verifies.md`). 1027 lieux sont publics et 291 masqués. Le compte unique est passé ADMIN. Les âges et les types de jeux des aires de jeux sont importés depuis OSM. 563 tests passent. Les cases cochées « (fait le 26/10) » du §8 ont été reportées dans `CLAUDE.md` et `ROADMAP.md` ; les autres restent à faire.
 
+> **Mise à jour du 27 octobre 2026.** Jérôme a fait la fenêtre de maintenance (`docs/MAINTENANCE.md`) : 69 paquets, noyau 7.0.0-38 actif sans reboot en attente, PostgreSQL 16.15, PostGIS 3.6.4 (extension mise à jour sur `tinyhike` et `tinyhike_dev`), Node 22.23.4. Les lignes Noyau, Runtime et Base du §2 sont à jour. Le contournement de l'échec de cloud-init au boot est versionné dans `ops/systemd/cloud-init-local.service.d/`. 665 tests passent.
+
 Ce fichier est un instantané unique et sourcé du projet. Il doit servir de base pour harmoniser `README.md`, `CLAUDE.md`, `ROADMAP.md`, `DESIGN.md`, `DEPLOY.md` et `MEMORY.md`. Il décrit **l'arbre de travail**, pas seulement le dernier commit. Le lot du 23 octobre (avis avec compte, staging photo privé et modération, UX/a11y web) est **en production mais pas commité**. `git status` compte 33 fichiers modifiés et 22 non suivis. `HEAD` = `origin/main` = `c173764` (14 sept.). Les éléments de ce lot portent la mention **« déployé, non commité »**. Chaque fait cite sa source : un fichier avec sa ligne, une commande ou un hash de commit. Les chiffres de base de données viennent de `SELECT` agrégés lancés le 23 oct. Ce qui n'a pas pu être vérifié est marqué **non vérifié**.
 
 Preuves du déploiement du lot :
@@ -51,7 +53,7 @@ Preuves du déploiement du lot :
 |---|---|---|
 | Machine | Hetzner CPX22 : 2 vCPU, 3,7 Gi de RAM, swap de 2 Go, disque de 75 Go (27 % utilisés) | `nproc`, `free`, `swapon`, `df` |
 | OS | Ubuntu 26.04 LTS | `/etc/os-release` |
-| Noyau | **7.0.0-15** en cours d'exécution, **7.0.0-38** installé, `reboot-required` présent. Le reboot ne concerne pas que le noyau : `reboot-required.pkgs` liste aussi **`libc6`** et `linux-base`, plus `linux-image` de 7.0.0-22 à -38 | `uname -r`, `ls /boot`, `/var/run/reboot-required.pkgs` |
+| Noyau | **7.0.0-38** actif depuis le reboot du 27/10, plus de `reboot-required`. 7.0.0-15 reste installé (noyau de secours). De 7.0.0-22 à -34, il ne reste que la configuration (état `rc`). Avant, le 23/10 : 7.0.0-15 en cours d'exécution, 7.0.0-38 installé, un reboot attendu aussi par `libc6` et `linux-base` | `uname -r`, `dpkg -l`, `/var/run/reboot-required` (27/10) |
 | Sécurité | UFW : 22, 80 et 443 seulement. fail2ban : jail `sshd`. `PermitRootLogin no`, `PasswordAuthentication no` | `ufw status`, `fail2ban-client`, `sshd_config` |
 | Services | `tinyhike-api`, `nginx` et `postgresql` sont actifs et activés | `systemctl` |
 | Docker | **non installé** | `ls /usr/bin/docker`, `id tinyhike` |
@@ -65,11 +67,11 @@ Preuves du déploiement du lot :
 
 | Couche | Composants (version installée) | Source |
 |---|---|---|
-| Runtime | Node 22.22.2, pnpm 11.5.2 | `node -v`, `pnpm -v` |
+| Runtime | Node 22.23.4 depuis le 27/10 (22.22.2 avant), pnpm 11.5.2 | `node -v`, `pnpm -v` |
 | API | Fastify 5.8.5 ; @fastify/cookie 10.0.1, cors 10.1.0, helmet 13.0.2, multipart 9.4.0, rate-limit 11.0.0 ; Prisma 6.19.3 ; jose 5.10.0 ; zod 3.25.76 ; resend 4.8.0 ; @aws-sdk/client-s3 3.1061.0 ; @anthropic-ai/sdk 0.39.0 ; **sharp 0.35.5 (déployé, non commité)** ; ESM, TS strict | `api/package.json`, `node_modules` |
 | Tests | Vitest 4.1.10, TypeScript 5.9.3, tsx 4.22.4. **395 tests dans 11 fichiers** (admin 35, auth 88, client-key 7, lists 8, osm 23, photo-moderation 50, photos 58, places 45, r2 31, reviews 48, tags 2). Suite relancée le 23/10 à 14:13, juste avant la migration : **395/395 verts**, `tsc --noEmit` propre sur api et web. Aucun test ne touche la base ni le réseau | `api/package.json` ; `pnpm test` (23/10, 14:13:54) ; comptage AST concordant |
 | Web | React 18.3.1 ; react-router-dom 6.30.4 ; TanStack Query 5.101.0 ; mapbox-gl 3.24.0 ; Vite 5.4.21 ; vite-plugin-pwa 0.20.5 ; **aucune bibliothèque UI ni i18n** | `web/package.json` |
-| Base | PostgreSQL 16.14 + PostGIS 3.6.3 (plus `postgis_topology`, inutilisé), en natif | `psql --version`, `pg_extension` |
+| Base | PostgreSQL 16.15 + PostGIS 3.6.4 depuis le 27/10 (16.14 + 3.6.3 avant), plus `postgis_topology`, inutilisé ; en natif | `psql --version`, `pg_extension` (27/10) |
 | Proxy | nginx 1.28.3 | `nginx -v` |
 | IA | `claude-sonnet-4-6`, uniquement pour l'enrichissement | `api/src/jobs/enrich.ts:80` |
 
@@ -228,7 +230,7 @@ L'unité systemd (`ops/systemd/tinyhike-api.service`) tourne en `User=tinyhike` 
 | CI `pnpm test` sur push ; dump Postgres planifié | ROADMAP « Continuous » |
 | « Stroller score », icônes de fiche, logo avec poussette, landing animée | `DESIGN.md:164-189` |
 | Déploiement de `marketing/` (apex/www), métadonnées OG et favicon | ROADMAP « Known debt » ; `DESIGN.md:173-174` |
-| Dette : carte plus légère (~340 KB par déplacement), reboot noyau, enum `CLAUDE`, test d'expiration du JWT, **9 lieux legacy dont l'élément OSM ne correspond plus à la requête** (job de réconciliation « someday », `ROADMAP.md:148`), purge de cache automatisée, domaine séparé pour le contenu utilisateur | ROADMAP « Known debt » (`ROADMAP.md:139-155`) |
+| Dette : carte plus légère (~340 KB par déplacement), reboot noyau (fait le 27/10), enum `CLAUDE`, test d'expiration du JWT, **9 lieux legacy dont l'élément OSM ne correspond plus à la requête** (job de réconciliation « someday », `ROADMAP.md:148`), purge de cache automatisée, domaine séparé pour le contenu utilisateur | ROADMAP « Known debt » (`ROADMAP.md:139-155`) |
 
 **Non-objectifs** (CLAUDE.md « Non-goals ») : temps réel, notifications push (un digest par cron reste OK), multi-villes avant le mois 3, apps natives, GPS avancé, pub et monétisation complexe (Ko-fi seulement), tuiles auto-hébergées, fédération. ROADMAP ajoute : pas de messagerie ni de profils sociaux.
 
@@ -501,7 +503,7 @@ Le plancher est appliqué :
 | 13 | « Request corrections » (pitch) | Aucun endpoint ; lié au point 4 | `ROADMAP.md:19-20` |
 
 Actions en attente (pas des décisions) :
-- **Jerome** : configuration Cloudflare des photos (`DEPLOY.md` §3c) ; commit et push du lot du 23 oct. ; reboot du noyau.
+- **Jerome** : configuration Cloudflare des photos (`DEPLOY.md` §3c) ; commit et push du lot du 23 oct. ; reboot du noyau (fait le 27/10 ; reste la suppression du snapshot vers le 3 nov., `docs/MAINTENANCE.md`).
 - **À construire** : interface admin, parcours « Ajouter un lieu », Claude vision.
 
 ### 7.3 TODO dans le code
@@ -568,12 +570,12 @@ Actions en attente (pas des décisions) :
 - [ ] l.336-341 « Open questions for Jerome before we start » → questions 1 à 3 tranchées le 9 sept. ; seule la 4 (marketing) reste ouverte.
 - [ ] l.94-95 « when a second dev joins or services multiply — **exactly the trigger CLAUDE.md #2 names** » → faux : CLAUDE.md:405 dit « first 10 real users, or first deploy to `app.tinyhike.com` HTTPS ». Aligner les deux textes sur un seul déclencheur.
 - [ ] l.320 (Rollback) « dev tunnel still works as before » → s'appuie sur le tunnel que CLAUDE.md:27 déclare inutile ; préciser ou retirer.
-- [ ] l.36 noyau 7.0.0-31 → **7.0.0-38**.
+- [x] (fait le 27/10 : la fenêtre de maintenance est cochée, noyau 7.0.0-38 actif) l.36 noyau 7.0.0-31 → **7.0.0-38**.
 - [ ] Ajouter : apex et www servent la PWA (pas de `default_server`) ; la PWA statique n'envoie aucun en-tête de sécurité depuis l'origine (HSTS et CSP seulement sur `/api`), et `server_tokens` expose la version de nginx. Ce que l'edge Cloudflare ajoute n'a **pas été vérifié**.
 
 ### ROADMAP.md
 - [ ] l.176 « `main` is in sync with GitHub » → vrai pour les commits seulement : le lot du 23 oct. est **déployé, non commité** (33 M + 22 ??), y compris une migration appliquée en prod.
-- [ ] l.143 noyau `7.0.0-31` → **7.0.0-38**.
+- [x] (fait le 27/10 : la ligne est retirée de « Known debt », le reboot est fait) l.143 noyau `7.0.0-31` → **7.0.0-38**.
 - [ ] Ajouter la décision « lieux OSM auto-approuvés » (`6b9f0a7`), citée par `seed-osm.ts:72` comme « see ROADMAP », et noter que les 381 lieux de juin ont été passés en APPROVED à la main, sans trace.
 - [ ] Ajouter la règle (ouverte) « votes de tags → booléens `Place` », citée par `PlaceAmenities.tsx:17-20` comme « see ROADMAP ».
 - [ ] l.78-84 : compléter la liste des tags renseignés, en oui / non : `hasOutdoorSeating` 55 / 12, `dogFriendly` 1 / 10, `enclosed` 5 / 0, `freeEntry` 1 / 3, `hasChangingTable` 1 / 0, `hasHighchair` 1 / 0 ; et les 183 parcs / aires de pique-nique.

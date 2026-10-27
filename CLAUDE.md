@@ -2,7 +2,7 @@
 
 > **For agents (Claude Code, claude.ai, others).** Read this first, every session, before touching any code, command, or commit. This file reflects the **actual state** of the project, not the original aspirations.
 
-Last updated: 26 October 2026 — **dev separated from production** (`/srv/tinyhike-dev`, see "Dev and production" below), unverified cafés hidden (place category + admin verification), playground ages and equipment imported from OSM, `places:verify add` (a place the seeder missed, from one OSM element). Previous: 23 October 2026, reviews + photo-upload batch.
+Last updated: 27 October 2026 — **maintenance window done** (kernel 7.0.0-38, PostgreSQL 16.15, PostGIS 3.6.4, Node 22.23.4; `docs/MAINTENANCE.md`). Previous: 26 October 2026, **dev separated from production** (`/srv/tinyhike-dev`, see "Dev and production" below), unverified cafés hidden (place category + admin verification), playground ages and equipment imported from OSM, `places:verify add` (a place the seeder missed, from one OSM element).
 
 ---
 
@@ -30,15 +30,15 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
 ## Current state (do not assume, this is fact)
 
 ### ✅ What works right now
-- **Hetzner CPX22** at IP `178.105.100.4`, Ubuntu 26.04 LTS, hardened (UFW, fail2ban, swap 2GB, SSH key-only, root login disabled, user `tinyhike` with NOPASSWD sudo)
-- **PostgreSQL 16 + PostGIS 3.6** running natively (no Docker), DB `tinyhike` created with user `tinyhike`, password in `/root/.tinyhike_db_password` and Bitwarden
+- **Hetzner CPX22** at IP `178.105.100.4`, Ubuntu 26.04 LTS, kernel `7.0.0-38-generic` (since the 27 Oct 2026 reboot), hardened (UFW, fail2ban, swap 2GB, SSH key-only, root login disabled, user `tinyhike` with NOPASSWD sudo)
+- **PostgreSQL 16.15 + PostGIS 3.6.4** (since 27 Oct 2026, extension updated in both databases) running natively (no Docker), DB `tinyhike` created with user `tinyhike`, password in `/root/.tinyhike_db_password` and Bitwarden
 - **Prisma schema migrated**, 12 models alive (User, MagicToken, Place, PlaceTranslation, Route, RouteTranslation, Track, Photo, Review, List, ListTranslation, ListPlace, ListCollaborator, Follow)
 - **PostGIS triggers active**: `Place.geom` (Point 4326) and `Route.geom` (LineString 4326) auto-synced from `lat`/`lng`, with GIST indexes for fast spatial queries
 - **IN PRODUCTION since 14 Sep 2026** — `https://app.tinyhike.com` (PWA) and `https://api.tinyhike.com` are live over HTTPS. No SSH tunnel needed any more. See `DEPLOY.md` for the runbook.
   - API runs as the `tinyhike-api` **systemd** service (`node dist/index.js`), enabled, survives reboot
   - **nginx 1.28.3** terminates TLS with a **Cloudflare Origin cert** (`/etc/ssl/cloudflare/tinyhike.{pem,key}`, `*.tinyhike.com`, expires 2041), serves `web/dist` with SPA fallback, and proxies `/api/*` to `127.0.0.1:3000`
   - nginx resolves the **real visitor IP** from `CF-Connecting-IP`, and returns **403 to any request that didn't come through Cloudflare**
-  - Config lives in git: `ops/systemd/tinyhike-api.service`, `ops/nginx/tinyhike.conf`, `ops/nginx/cloudflare-*.conf` (regenerate with `ops/scripts/update-cloudflare-ips.sh`)
+  - Config lives in git: `ops/systemd/tinyhike-api.service`, `ops/nginx/tinyhike.conf`, `ops/nginx/cloudflare-*.conf` (regenerate with `ops/scripts/update-cloudflare-ips.sh`), and the cloud-init drop-in `ops/systemd/cloud-init-local.service.d/10-after-apparmor.conf` (`docs/MAINTENANCE.md`, "cloud-init")
 - **API Fastify 5** — all routes loaded (auth, places, routes, photos, lists, admin), helmet, rate limiting, `trustProxy`, global error handler. Dev: `cd /srv/tinyhike-dev/api && pnpm dev` on `127.0.0.1:3100` (`HOST`, `PORT`); production listens on `0.0.0.0:3000` behind nginx
   - **Rate-limit keys fold IPv6 to its /64** — every `keyGenerator` goes through `clientKey(req.ip)` (`api/src/lib/client-key.ts`): IPv4 as-is, IPv4-mapped IPv6 back to IPv4, any other IPv6 cut to its /64. One machine owns a whole /64, so the full address would let it rotate past every limit. The photo routes key per account instead (`user:<id>`, hook `preHandler` so it runs after `requireAuth`).
   - **Session cookie is `__Host-session`** (HttpOnly, Secure, SameSite=Lax, Path=/, no Domain; `SESSION_COOKIE` / `SESSION_COOKIE_OPTIONS` in `api/src/plugins/auth.ts`). The prefix stops a sibling subdomain (`photos.` serves user content) from planting or shadowing a session. Clearing it needs the same Secure + Path=/ attributes, or browsers ignore the clear. Three guards: `requireAuth` (401), `optionalAuth` (attaches the session when valid, never replies), `requireAdmin`.
@@ -72,7 +72,7 @@ The founder is Jerome (Telegram ID `7581563177`). Solo dev, ~8-week MVP timeline
 - **Photo uploads are off in production** until Jerome does the one-time Cloudflare setup in `DEPLOY.md` §3c: create the private staging bucket, set its CORS and its `uploads/` lifecycle rule, widen the R2 token to both buckets, set `R2_STAGING_BUCKET`. The code ships dark: the web hides the button until then.
 - **No admin UI yet (CLI only)** — photos are moderated with `pnpm photos:moderate` on the VPS (or the admin-only `/api/admin/photos` routes), proposals with `PATCH /api/admin/places/:id`, and places are verified with `pnpm places:verify` (or `GET /api/admin/places`, `PUT`/`DELETE /api/admin/places/:id/verification`). No Claude vision auto-moderation either: every photo waits for a human.
 - **No way to set a handle** — `User.handle` has no writer, so every review shows as "Un parent". Signed reviews need a product decision first (handles vs first names, opt-in toggle).
-- **Pending kernel reboot and package updates** — running `7.0.0-15-generic`. The full procedure (dump, apt, PostgreSQL/PostGIS/Node from their repos, reboot, checks, rollback) is `docs/MAINTENANCE.md`, prepared 26 Oct 2026, not yet run. Jerome runs it from his own SSH session.
+- **Maintenance follow-up** — the window ran on 27 Oct 2026 (`docs/MAINTENANCE.md`, results and procedure for the next one). Left: delete the Hetzner snapshot `pre-maint-27oct` around 3 Nov, then purge the old kernels' residual configs ("Plus tard" there; `apt autoremove` alone removes nothing). At the next reboot, check that cloud-init no longer fails (its section there).
 - **No design pass yet** for the "stroller score" and place-card icons (the identity and the a11y floor are in `DESIGN.md`)
 - **`marketing/` not deployed** — apex and `www` have no origin server block yet
 - **No CI** — `pnpm test` runs locally only; `main` is unprotected
@@ -96,8 +96,8 @@ Since 14 Sep 2026 the model has 19 tags (8 indoor/baby ones added, `hasChangingT
 ### Hetzner VPS (178.105.100.4)
 - Ubuntu 26.04 LTS, user `tinyhike` (sudo NOPASSWD), home `/home/tinyhike`
 - Production checkout `/srv/tinyhike/`, dev checkout `/srv/tinyhike-dev/`, both owned by `tinyhike`
-- Node.js 22 LTS, pnpm 11.x
-- PostgreSQL 16 + PostGIS 3.6, listening only on `127.0.0.1:5432` (UFW blocks public)
+- Node.js 22 LTS (22.23.4, nodesource), pnpm 11.x
+- PostgreSQL 16.15 + PostGIS 3.6.4 (pgdg), listening only on `127.0.0.1:5432` (UFW blocks public). Neither pgdg nor nodesource is updated automatically: `docs/MAINTENANCE.md`
 - Claude Code CLI installed globally under `~/.npm-global/bin/claude`
 - tmux 3.6 for persistent sessions
 - Firewall: UFW (only 22/tcp, 80/tcp, 443/tcp open), fail2ban active on SSH
