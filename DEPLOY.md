@@ -60,8 +60,14 @@
       places → 404, 0 verified café so 0 café on the map.
 - [ ] Photo uploads: one-time Cloudflare setup + browser smoke test (§3c). The UI
       ships with the batch but stays hidden until `R2_STAGING_BUCKET` is set.
-- [ ] Reboot to pick up the pending kernel (`7.0.0-15` → `7.0.0-38` now), with the
-      package, PostgreSQL, PostGIS and Node updates: `docs/MAINTENANCE.md`
+- [x] Maintenance window (27 Oct 2026, Jerome, `docs/MAINTENANCE.md`): 69 packages,
+      kernel 7.0.0-38, PostgreSQL 16.15, PostGIS 3.6.4 (extension updated in
+      `tinyhike` and `tinyhike_dev`), Node 22.23.4. cloud-init's `init-local` failed
+      at boot (canonical/cloud-init#7142): the drop-in
+      `ops/systemd/cloud-init-local.service.d/10-after-apparmor.conf` is installed in
+      `/etc/systemd/system/cloud-init-local.service.d/` (`docs/MAINTENANCE.md`, "cloud-init").
+- [ ] Delete the Hetzner snapshot `pre-maint-27oct` around 3 Nov, then purge the old
+      kernels' residual configs (`docs/MAINTENANCE.md`, "Plus tard").
 
 **Deployed 2026-09-14.** The app no longer needs the SSH tunnel.
 
