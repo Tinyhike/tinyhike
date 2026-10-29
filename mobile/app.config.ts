@@ -10,6 +10,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: isDev ? 'TinyHike (dev)' : 'TinyHike',
   slug: 'tinyhike',
+  // The EAS project, on Jerome's Expo account: https://expo.dev/accounts/jerry010/projects/tinyhike
+  owner: 'jerry010',
   scheme: isDev ? 'tinyhike-dev' : 'tinyhike',
   version: '0.1.0',
   orientation: 'portrait',
@@ -38,4 +40,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
   ],
+  extra: {
+    ...config.extra,
+    eas: { projectId: '639c9d74-7290-4ef4-9f83-2cb8f612f265' },
+  },
 })
