@@ -4,7 +4,7 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start --dev-client --tunnel",
+    "start": "APP_VARIANT=development expo start --dev-client --tunnel",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
