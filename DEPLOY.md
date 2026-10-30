@@ -195,7 +195,7 @@ the backfills a deploy calls for.
 | Data | everything | production's places, routes and translations; **no accounts, reviews, sign-in tokens, photos, lists, follows or tracks** |
 | API | systemd `tinyhike-api`, `127.0.0.1:3000` behind nginx (`HOST` unset: the default, since 27 Oct 2026) | `pnpm dev` in tmux, `127.0.0.1:3100` (`HOST`, `PORT` in the dev `.env`) |
 | Web | `web/dist` served by nginx | Vite on `127.0.0.1:5173`, proxying `/api` to `:3100` (`DEV_HOST`, `DEV_API_TARGET` in `web/.env`). 5173 is the port the Mapbox token allows |
-| Native app (`mobile/`) | nothing yet | development build on Jerome's Android; Metro (`pnpm start` in `mobile/`, with the tunnel, in tmux) only during a session, stopped afterwards (about 700 MB; CLAUDE.md, "A mobile session"). Port 8081 closed by UFW, the phone goes through the Expo tunnel |
+| Native app (`mobile/`) | nothing yet | development build on Jerome's Android; Metro (`pnpm start` in `mobile/`, in tmux) only during a session, stopped afterwards (about 700 MB; CLAUDE.md, "A mobile session"). The phone reaches it over Tailscale at `http://100.98.143.86:8081`: UFW opens 8081 on `tailscale0` only, closed to the internet. Fallback: the Expo tunnel (`pnpm start:tunnel`) |
 | Sign-in e-mails | sent by Resend | written to the API's log (`EMAIL_DELIVERY=log`, refused under `NODE_ENV=production`) |
 | Secrets | production's `.env` | none of production's: no Resend, R2, Anthropic or Telegram key, so photo uploads are off and enrichment can't run |
 | systemd, nginx | yes | nothing |
