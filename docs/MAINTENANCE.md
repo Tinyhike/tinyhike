@@ -45,6 +45,7 @@
 ## Bon à savoir avant une fenêtre
 
 - **pgdg (PostgreSQL, PostGIS) et nodesource (Node) ne sont jamais mis à jour automatiquement.** unattended-upgrades n'applique chaque matin que les correctifs de sécurité Ubuntu.
+- **Tailscale vient d'un troisième dépôt tiers, lui non plus jamais mis à jour automatiquement** (installé le 30/10/2026, version 1.104.4). C'est `/etc/apt/sources.list.d/tailscale.list`, `https://pkgs.tailscale.com/stable/ubuntu resolute main`, signé par la clé `/usr/share/keyrings/tailscale-archive-keyring.gpg` (empreinte `2596 A99E AAB3 3821 893C 0A79 458C A832 957F 5868`). `apt full-upgrade` le met à jour avec le reste. `tailscaled` redémarre alors, ce qui coupe Metro pour le téléphone quelques secondes mais ne touche ni l'API ni nginx. Le démon tourne avec `--netfilter-mode=off` et `--accept-dns=false` (CLAUDE.md, « A mobile session ») : après la mise à jour, `sudo nft list ruleset | grep -c ts-input` doit toujours répondre `0`, et `resolvectl status` ne doit montrer aucun serveur DNS 100.100.100.100.
 - **Questions interactives d'apt : risque faible.** Aucun fichier de configuration des paquets n'était modifié localement le 26/10 (`dpkg -V` pour le revérifier). Le serveur démarre en EFI (`grub-efi-amd64`) et `grub-pc` n'est pas installé, donc pas de question sur le disque GRUB.
 - **SSH revient seul après le reboot** : `ssh.socket` est activé.
 - **Windows Terminal et tmux** : la souris est activée dans tmux (`set -g mouse on`). Pour coller, `Ctrl+Maj+V`. Pour copier, sélectionner en maintenant `Maj`, sinon tmux capture la sélection.
