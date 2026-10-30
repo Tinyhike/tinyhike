@@ -101,12 +101,13 @@ Since 14 Sep 2026 the model has 19 tags (8 indoor/baby ones added, `hasChangingT
 - PostgreSQL 16.15 + PostGIS 3.6.4 (pgdg), listening only on `127.0.0.1:5432` (UFW blocks public). Neither pgdg nor nodesource is updated automatically: `docs/MAINTENANCE.md`
 - Claude Code CLI installed globally under `~/.npm-global/bin/claude`
 - tmux 3.6 for persistent sessions
-- Firewall: UFW (only 22/tcp, 80/tcp, 443/tcp open), fail2ban active on SSH
+- Firewall: UFW (only 22/tcp, 80/tcp, 443/tcp open to the internet; 8081/tcp on `tailscale0` only, for Metro), fail2ban active on SSH
+- Tailscale 1.104.4 (official apt repo, since 30 Oct 2026): the node `tinyhike-prod` in Jerome's tailnet, only so his phone reaches Metro. Its netfilter rules and its DNS are off; no Tailscale SSH, exit node or subnet routes ("A mobile session")
 
 ### Application
 - **API** — Node.js + Fastify v5 + Prisma 6 + TypeScript strict + ESM modules
 - **Web** — React 18 + Vite 5 + Mapbox GL JS v3 + TanStack Query v5 + React Router v6 + vite-plugin-pwa
-- **Mobile** — Expo SDK 58 (React Native 0.88, New Architecture) + Expo Router + TypeScript strict + `@rnmapbox/maps` (native Mapbox v11) + `expo-location`; built by EAS Build (development build: `com.tinyhike.app.dev`, "TinyHike (dev)"), JS served by Metro on the VPS
+- **Mobile** — Expo SDK 58 (React Native 0.88, New Architecture) + Expo Router + TypeScript strict + `@rnmapbox/maps` (native Mapbox v11) + `expo-location`; built by EAS Build (development build: `com.tinyhike.app.dev`, "TinyHike (dev)"), JS served by Metro on the VPS over Tailscale
 - **Marketing** — static HTML (`marketing/index.html`, Dutch copy), served by nginx in prod (not yet)
 - **Auth** — Magic-link email via Resend → JWT in HttpOnly cookie via `@fastify/cookie` + `jose`
 - **Photos** — Cloudflare R2 via `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`
@@ -313,22 +314,36 @@ Then browse `http://localhost:5173` on laptop. To sign in, ask for a link: it is
 `Ctrl+B` then `D` — session keeps running. Reattach with `tmux attach -t tinyhike` anytime.
 
 ### A mobile session (the native app)
-The development build, "TinyHike (dev)", is installed once on Jerome's Android. It loads its JavaScript from Metro on the VPS, through the Expo tunnel. The EAS project is `@jerry010/tinyhike`, on Jerome's Expo account (https://expo.dev/accounts/jerry010/projects/tinyhike).
+The development build, "TinyHike (dev)", is installed once on Jerome's Android. It loads its JavaScript from Metro on the VPS, over Tailscale (since 30 Oct 2026; the Expo tunnel is the fallback). The EAS project is `@jerry010/tinyhike`, on Jerome's Expo account (https://expo.dev/accounts/jerry010/projects/tinyhike).
 
 ```bash
-# In the tmux window "metro". The tunnel needs the Expo login on the VPS (below).
-# pnpm start = APP_VARIANT=development expo start --dev-client --tunnel; the loop restarts it when
-# the tunnel kills it (pitfall 27)
+# In the tmux window "metro". pnpm start = Metro advertising the server's Tailscale address
+# (REACT_NATIVE_PACKAGER_HOSTNAME=$(tailscale ip -4), --host lan); it refuses to start while Tailscale
+# is down, rather than advertise the public IP. The loop restarts Metro if it stops.
 cd /srv/tinyhike-dev/mobile && until pnpm start; do echo "$(date "+%F %T") Metro arrêté, relance dans 3 s"; sleep 3; done
-# On the phone: open TinyHike (dev) and enter the https://….on.expo.app address the pane prints
-# (the "Metro:" line, after __expo_url=), or scan its QR code. End of session: Ctrl+C twice in that pane.
+# On the phone, Tailscale connected: open TinyHike (dev) and tap the server under the recent ones,
+# or enter http://100.98.143.86:8081. End of session: Ctrl+C twice in that pane.
 ```
 
-- **The tunnel address changes at every Metro start** (`https://c-jerry010-<…>.on.expo.app`), restarts by the loop included: give the phone the new one. Check it from anywhere with `curl https://<address>/status`, which answers `packager-status:running`; a 502 "No server is connected" means Metro is down.
-- `pnpm start` sets `APP_VARIANT=development`, so the manifest Metro serves describes the installed build (`TinyHike (dev)`, `com.tinyhike.app.dev`). A bare `npx expo start` would describe the production variant.
-- **Logging in to Expo on the VPS** (once, by Jerome, never with his password in an agent's session; the session is kept in `~/.expo/state.json`). `npx eas-cli@latest login` signs in through the browser, then redirects to `http://localhost:<port>`, and that port is on the VPS, not on the PC. What worked (Jerome, Oct 2026): leave the login waiting, open a second terminal on the PC with `ssh -N -L <port>:localhost:<port> tinyhike` (the port the login prints), then open the sign-in link in the PC's browser. `npx eas-cli@latest login --device` (a code entered in any browser) should need no tunnel; not tried. Check with `npx eas-cli@latest whoami` (`jerry010`).
-- **Stop Metro outside sessions.** Measured on 29 Oct 2026 with the tunnel, after one cold Android bundle (cache cleared, 16.6 s through the tunnel): 528 MB for the Expo CLI process plus 112 MB for the `pnpm` wrapper. The server went from 1.22 to 1.75 GB used, with 2.06 GB of 3.8 GB still available and no swap; the production API, PostgreSQL, an EAS build client (about 270 MB) and a Claude Code session were running alongside. On 27 Oct, without the tunnel, it was about 610 + 75 MB: the tunnel runs inside the Expo CLI process and costs nothing measurable. With a warm cache the Expo CLI process stays near 300 MB. Add the dev API and Vite and memory gets tight. And while Metro is up, the tunnel exposes the dev server, the bundle and its public Mapbox token included, at a public URL.
-- Metro listens on `*:8081`. UFW keeps 8081 closed, so the phone reaches it only through the tunnel.
+- **The address is fixed**: `http://100.98.143.86:8081`, the server's Tailscale IP, which a node keeps until it is removed from the tailnet. Check it from the server with `curl http://100.98.143.86:8081/status` (`packager-status:running`); `tailscale status` lists the devices: the server `tinyhike-prod` (100.98.143.86) and Jerome's phone `s23-de-jerome` (100.106.205.104), both on his Tailscale account. Plain http is fine: Tailscale encrypts the link, and the debug build allows cleartext.
+- **How Tailscale runs on the server** (30 Oct 2026, `sudo tailscale up --netfilter-mode=off --accept-dns=false --hostname=tinyhike-prod`, once; the settings survive reboots):
+  - `--netfilter-mode=off`: by default Tailscale adds its own iptables chain, `ts-input`, which accepts everything arriving on `tailscale0` before UFW sees it. Off, UFW stays the only firewall, and on `tailscale0` it adds only 8081/tcp (`ufw allow in on tailscale0 to any port 8081 proto tcp`) to the ports open to everyone.
+  - `--accept-dns=false`: the server keeps Hetzner's resolvers. Tailscale's DNS (100.100.100.100) would otherwise sit in the path of every lookup production makes (Resend, R2).
+  - Not enabled: Tailscale SSH, exit node, subnet routes. `tailscale debug prefs` shows `RunSSH false`, `CorpDNS false`, `NetfilterMode 0`, no `AdvertiseRoutes`. Checks after an upgrade: `docs/MAINTENANCE.md`.
+  - **Access policy** (admin console, Access controls): only the phone may open a connection to the server, and only on 8081/tcp; the server reaches nothing. tailscaled enforces it itself, whatever the netfilter mode, so it is a second lock in front of UFW. If the phone gets a new Tailscale IP (app reinstalled, device removed), update `hosts`:
+    ```json
+    {
+      "hosts": { "tinyhike-prod": "100.98.143.86", "s23-de-jerome": "100.106.205.104" },
+      "acls": [{ "action": "accept", "src": ["s23-de-jerome"], "proto": "tcp", "dst": ["tinyhike-prod:8081"] }],
+      "tests": [{ "src": "s23-de-jerome", "proto": "tcp", "accept": ["tinyhike-prod:8081"], "deny": ["tinyhike-prod:22", "tinyhike-prod:3100"] }]
+    }
+    ```
+  - **Key expiry is to be off for `tinyhike-prod`** (Machines → `tinyhike-prod` → ⋯ → Disable key expiry); otherwise the server leaves the tailnet after 180 days. `tailscale status --json` shows a `KeyExpiry` under `Self` while it is still on.
+- **The Expo tunnel, as a fallback** (the phone without Tailscale, Tailscale down): `pnpm start:tunnel` in the same loop. It needs the Expo login on the VPS (below). Its address changes at every Metro start (`https://c-jerry010-<…>.on.expo.app`), restarts by the loop included: give the phone the new one, from the pane's "Metro:" line (after `__expo_url=`) or its QR code. Check it from anywhere with `curl https://<address>/status`; a 502 "No server is connected" means Metro is down. It kills Metro when it reconnects (pitfall 27), and while it is up the dev server, the bundle and its public Mapbox token included, sits at a public URL.
+- Both scripts set `APP_VARIANT=development`, so the manifest Metro serves describes the installed build (`TinyHike (dev)`, `com.tinyhike.app.dev`). A bare `npx expo start` would describe the production variant.
+- **Logging in to Expo on the VPS** (for the tunnel and EAS builds; once, by Jerome, never with his password in an agent's session; the session is kept in `~/.expo/state.json`). `npx eas-cli@latest login` signs in through the browser, then redirects to `http://localhost:<port>`, and that port is on the VPS, not on the PC. What worked (Jerome, Oct 2026): leave the login waiting, open a second terminal on the PC with `ssh -N -L <port>:localhost:<port> tinyhike` (the port the login prints), then open the sign-in link in the PC's browser. `npx eas-cli@latest login --device` (a code entered in any browser) should need no tunnel; not tried. Check with `npx eas-cli@latest whoami` (`jerry010`).
+- **Stop Metro outside sessions.** Measured on 29 Oct 2026 with the tunnel, after one cold Android bundle (cache cleared, 16.6 s through the tunnel): 528 MB for the Expo CLI process plus 112 MB for the `pnpm` wrapper. The server went from 1.22 to 1.75 GB used, with 2.06 GB of 3.8 GB still available and no swap; the production API, PostgreSQL, an EAS build client (about 270 MB) and a Claude Code session were running alongside. On 27 Oct, without the tunnel, it was about 610 + 75 MB: the tunnel runs inside the Expo CLI process and costs nothing measurable. With a warm cache the Expo CLI process stays near 300 MB. Add the dev API and Vite and memory gets tight.
+- Metro listens on `*:8081`. UFW opens 8081 only on `tailscale0`: from the internet it stays closed, and the tunnel reaches Metro from inside the server. `curl http://178.105.100.4:8081/status` run on the server itself answers anyway: a packet to the server's own IP goes through `lo`, which UFW accepts. Test the public side from another machine.
 - Since SDK 58 the tunnel is `@expo/ws-tunnel`, built into Expo CLI, and it needs an Expo login. ngrok remains only as the legacy `--tunnel ngrok`, so `@expo/ngrok` is not a dependency.
 - You need a new development build only when native code or `app.config.ts` changes: a library with native code, a plugin, a permission. Build it with `cd /srv/tinyhike-dev/mobile && npx eas-cli@latest build --profile development --platform android`, in tmux (it can ask questions). JavaScript changes reload over Metro. The first build (29 Oct 2026) generated the Android keystore on Expo's servers (remote credentials), and `versionCode` lives on EAS (`appVersionSource: remote`).
 - Add packages with `npx expo install <pkg>`: it picks the SDK-compatible version and runs `pnpm add`, which installs copies. Then check with `pnpm typecheck` and `npx expo-doctor`.
@@ -472,7 +487,7 @@ These are real bugs we hit. Reading this list saves 30 min each time.
 
 26. **pnpm 11 skips releases younger than a day** — its built-in `minimumReleaseAge` (1440 minutes) is non-strict: `pnpm add <pkg>`, and `npx expo install`, which calls it, quietly take the newest version published more than a day ago instead of `latest`. On 27 Oct 2026 `@rnmapbox/maps` came in as 10.3.11 while `latest` was 10.3.15, published that morning. That delay is a protection (a hijacked release is usually pulled within hours): read the version that landed in `package.json` rather than assuming `latest`, and ask Jerome before working around it for a fix released today.
 
-27. **The Expo tunnel kills Metro when it reconnects** — when the `@expo/ws-tunnel` connection drops, it reconnects with the same signed URL, the tunnel service answers `409`, and Expo CLI doesn't catch the error: `Error: Unexpected server response: 409`, `exit code 7`, Metro gone. The phone then gets a connection error and `/status` on the public address a 502 "No server is connected to handle the request". It happened twice in a row: on 29 Oct 2026 within three hours of the start, then again before the next morning. Expo CLI 58.1.17 has the same tunnel code (and the same `@expo/ws-tunnel` 2.0.1), so updating doesn't help; no public Expo issue found. Workaround: the restart loop of "A mobile session", with a new address after each restart. A fixed address needs another way in (Tailscale, proposed 30 Oct 2026, Jerome to decide).
+27. **The Expo tunnel kills Metro when it reconnects** — when the `@expo/ws-tunnel` connection drops, it reconnects with the same signed URL, the tunnel service answers `409`, and Expo CLI doesn't catch the error: `Error: Unexpected server response: 409`, `exit code 7`, Metro gone. The phone then gets a connection error and `/status` on the public address a 502 "No server is connected to handle the request". It happened twice in a row: on 29 Oct 2026 within three hours of the start, then again before the next morning. Expo CLI 58.1.17 has the same tunnel code (and the same `@expo/ws-tunnel` 2.0.1), so updating doesn't help; no public Expo issue found. Workaround: the restart loop of "A mobile session", with a new address after each restart. Since 30 Oct 2026 Metro goes through Tailscale instead (`pnpm start`, a fixed address); the tunnel (`pnpm start:tunnel`) is only the fallback.
 
 ---
 
