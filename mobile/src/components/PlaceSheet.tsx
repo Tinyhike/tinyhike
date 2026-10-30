@@ -1,30 +1,48 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import type { BasemapPlace } from '@/lib/basemap-place'
+import type { TapLookup } from '@/lib/basemap-place'
 import { colors } from '@/lib/colors'
+import { t } from '@/lib/i18n'
+
+/** The sheet follows the tap: looking it up, then the place or why there is none. */
+export type SheetState = { kind: 'loading' } | TapLookup
 
 type Props = {
-  place: BasemapPlace
+  state: SheetState
   onClose: () => void
 }
 
+const MESSAGE = {
+  loading: 'tap.loading',
+  none: 'tap.none',
+  offline: 'tap.offline',
+  error: 'tap.error',
+} as const
+
 /** The tapped place, in a sheet at the bottom of the map. */
-export function PlaceSheet({ place, onClose }: Props) {
+export function PlaceSheet({ state, onClose }: Props) {
   const insets = useSafeAreaInsets()
   return (
     <View style={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}>
       <View style={styles.row}>
-        <View style={styles.text}>
-          <Text style={styles.name} numberOfLines={2} accessibilityRole="header">
-            {place.name}
-          </Text>
-          {place.category ? <Text style={styles.category}>{place.category}</Text> : null}
-        </View>
+        {state.kind === 'place' ? (
+          <View style={styles.text}>
+            <Text style={styles.name} numberOfLines={2} accessibilityRole="header">
+              {state.place.name}
+            </Text>
+            {state.place.category ? <Text style={styles.category}>{state.place.category}</Text> : null}
+          </View>
+        ) : (
+          <View style={[styles.text, styles.status]} accessibilityLiveRegion="polite">
+            {state.kind === 'loading' ? <ActivityIndicator color={colors.inkSoft} /> : null}
+            <Text style={styles.message}>{t(MESSAGE[state.kind])}</Text>
+          </View>
+        )}
         <Pressable
           onPress={onClose}
           accessibilityRole="button"
-          accessibilityLabel="Fermer"
+          accessibilityLabel={t('sheet.close')}
           style={({ pressed }) => [styles.close, pressed && styles.pressed]}
         >
           <Text style={styles.closeText}>×</Text>
@@ -53,8 +71,10 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   text: { flex: 1 },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 24 },
   name: { fontSize: 20, fontWeight: '700', color: colors.ink },
   category: { marginTop: 4, fontSize: 15, color: colors.inkSoft },
+  message: { flex: 1, fontSize: 15, color: colors.ink },
   close: {
     width: 44,
     height: 44,

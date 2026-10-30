@@ -4,26 +4,29 @@ import { useEffect, useRef, useState } from 'react'
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { PlaceSheet } from '@/components/PlaceSheet'
-import { placeAtTap, type BasemapPlace, type RenderedFeature } from '@/lib/basemap-place'
+import { PlaceSheet, type SheetState } from '@/components/PlaceSheet'
+import { lookUpPlace, type Viewpoint } from '@/lib/basemap-place'
 import { colors } from '@/lib/colors'
+import { locale, t } from '@/lib/i18n'
 
 // The PWA's opening view (web/src/pages/MapPage.tsx).
 const ROTTERDAM: [number, number] = [4.48, 51.92]
 const OPENING_ZOOM = 13
-// A finger covers more than one pixel: query a square this many dp around the tap.
-const TAP_SLOP = 16
+
+const TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? ''
 
 type MapPress = {
   geometry: { coordinates: number[] }
-  properties: { screenPointX: number; screenPointY: number }
 }
 
 export default function MapScreen() {
-  const map = useRef<MapView>(null)
   const camera = useRef<Camera>(null)
+  // Zoom and pitch decide which places Standard shows; updated when the map settles.
+  const view = useRef<Viewpoint>({ zoom: OPENING_ZOOM, pitch: 0 })
+  // Only the latest tap may fill the sheet: an older answer arriving late is dropped.
+  const lastTap = useRef(0)
   const insets = useSafeAreaInsets()
-  const [place, setPlace] = useState<BasemapPlace | null>(null)
+  const [sheet, setSheet] = useState<SheetState | null>(null)
   const [showPuck, setShowPuck] = useState(false)
   const [locationRefused, setLocationRefused] = useState(false)
 
@@ -35,15 +38,16 @@ export default function MapScreen() {
   }, [])
 
   async function onPress(press: MapPress) {
-    const { screenPointX: x, screenPointY: y } = press.properties
     const [lng, lat] = press.geometry.coordinates
-    const found = await map.current?.queryRenderedFeaturesInRect([y - TAP_SLOP, x - TAP_SLOP, y + TAP_SLOP, x + TAP_SLOP])
-    const features = (found?.features ?? []) as RenderedFeature[]
-    if (__DEV__) {
-      // Milestone 1a step 1 hinges on what the Standard style returns here: Metro's log shows it.
-      console.log('[tap]', JSON.stringify(features.slice(0, 12).map((f) => ({ geometry: f.geometry?.type, properties: f.properties }))))
-    }
-    setPlace(placeAtTap(features, [lng, lat]))
+    const tap = ++lastTap.current
+    setSheet({ kind: 'loading' })
+    const result = await lookUpPlace([lng, lat], view.current, locale, TOKEN)
+    if (tap === lastTap.current) setSheet(result)
+  }
+
+  function closeSheet() {
+    lastTap.current += 1
+    setSheet(null)
   }
 
   // The position is asked for the first time the parent wants it, like the PWA's locate button.
@@ -66,7 +70,7 @@ export default function MapScreen() {
     })
   }
 
-  if (!process.env.EXPO_PUBLIC_MAPBOX_TOKEN) {
+  if (!TOKEN) {
     return (
       <View style={[styles.missing, { paddingTop: insets.top + 24 }]}>
         <Text style={styles.missingText}>No Mapbox token: set EXPO_PUBLIC_MAPBOX_TOKEN in mobile/.env, then restart Metro.</Text>
@@ -77,11 +81,13 @@ export default function MapScreen() {
   return (
     <View style={styles.screen}>
       <MapView
-        ref={map}
         style={styles.screen}
         styleURL="mapbox://styles/mapbox/standard"
         scaleBarEnabled={false}
         onPress={(press) => void onPress(press as MapPress)}
+        onMapIdle={(state) => {
+          view.current = { zoom: state.properties.zoom, pitch: state.properties.pitch }
+        }}
       >
         <Camera ref={camera} defaultSettings={{ centerCoordinate: ROTTERDAM, zoomLevel: OPENING_ZOOM }} />
         {showPuck ? <LocationPuck puckBearingEnabled pulsing={{ isEnabled: true }} /> : null}
@@ -93,16 +99,16 @@ export default function MapScreen() {
           accessibilityRole="button"
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
         >
-          <Text style={styles.buttonText}>Ma position</Text>
+          <Text style={styles.buttonText}>{t('map.locate')}</Text>
         </Pressable>
         {locationRefused ? (
           <Pressable onPress={() => void Linking.openSettings()} accessibilityRole="button" style={styles.note}>
-            <Text style={styles.noteText}>Position refusée. Toucher pour ouvrir les réglages.</Text>
+            <Text style={styles.noteText}>{t('map.locateRefused')}</Text>
           </Pressable>
         ) : null}
       </View>
 
-      {place ? <PlaceSheet place={place} onClose={() => setPlace(null)} /> : null}
+      {sheet ? <PlaceSheet state={sheet} onClose={closeSheet} /> : null}
     </View>
   )
 }
