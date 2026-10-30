@@ -316,13 +316,15 @@ Then browse `http://localhost:5173` on laptop. To sign in, ask for a link: it is
 The development build, "TinyHike (dev)", is installed once on Jerome's Android. It loads its JavaScript from Metro on the VPS, through the Expo tunnel. The EAS project is `@jerry010/tinyhike`, on Jerome's Expo account (https://expo.dev/accounts/jerry010/projects/tinyhike).
 
 ```bash
-# In a tmux pane. The tunnel needs the Expo login on the VPS (below)
-cd /srv/tinyhike-dev/mobile && pnpm start    # = APP_VARIANT=development expo start --dev-client --tunnel
+# In the tmux window "metro". The tunnel needs the Expo login on the VPS (below).
+# pnpm start = APP_VARIANT=development expo start --dev-client --tunnel; the loop restarts it when
+# the tunnel kills it (pitfall 27)
+cd /srv/tinyhike-dev/mobile && until pnpm start; do echo "$(date "+%F %T") Metro arrêté, relance dans 3 s"; sleep 3; done
 # On the phone: open TinyHike (dev) and enter the https://….on.expo.app address the pane prints
-# (the "Metro:" line, after __expo_url=), or scan its QR code. End of session: Ctrl+C in that pane.
+# (the "Metro:" line, after __expo_url=), or scan its QR code. End of session: Ctrl+C twice in that pane.
 ```
 
-- **The tunnel address changes at every Metro start** (`https://c-jerry010-<…>.on.expo.app`): give the phone the new one each session.
+- **The tunnel address changes at every Metro start** (`https://c-jerry010-<…>.on.expo.app`), restarts by the loop included: give the phone the new one. Check it from anywhere with `curl https://<address>/status`, which answers `packager-status:running`; a 502 "No server is connected" means Metro is down.
 - `pnpm start` sets `APP_VARIANT=development`, so the manifest Metro serves describes the installed build (`TinyHike (dev)`, `com.tinyhike.app.dev`). A bare `npx expo start` would describe the production variant.
 - **Logging in to Expo on the VPS** (once, by Jerome, never with his password in an agent's session; the session is kept in `~/.expo/state.json`). `npx eas-cli@latest login` signs in through the browser, then redirects to `http://localhost:<port>`, and that port is on the VPS, not on the PC. What worked (Jerome, Oct 2026): leave the login waiting, open a second terminal on the PC with `ssh -N -L <port>:localhost:<port> tinyhike` (the port the login prints), then open the sign-in link in the PC's browser. `npx eas-cli@latest login --device` (a code entered in any browser) should need no tunnel; not tried. Check with `npx eas-cli@latest whoami` (`jerry010`).
 - **Stop Metro outside sessions.** Measured on 29 Oct 2026 with the tunnel, after one cold Android bundle (cache cleared, 16.6 s through the tunnel): 528 MB for the Expo CLI process plus 112 MB for the `pnpm` wrapper. The server went from 1.22 to 1.75 GB used, with 2.06 GB of 3.8 GB still available and no swap; the production API, PostgreSQL, an EAS build client (about 270 MB) and a Claude Code session were running alongside. On 27 Oct, without the tunnel, it was about 610 + 75 MB: the tunnel runs inside the Expo CLI process and costs nothing measurable. With a warm cache the Expo CLI process stays near 300 MB. Add the dev API and Vite and memory gets tight. And while Metro is up, the tunnel exposes the dev server, the bundle and its public Mapbox token included, at a public URL.
@@ -469,6 +471,8 @@ These are real bugs we hit. Reading this list saves 30 min each time.
 25. **Tests read the checkout's `.env`** — `app.ts` loads `.env` through dotenv, which never overrides a variable already set. In the dev checkout that `.env` says `EMAIL_DELIVERY=log` and has no Resend key, so building the app in tests either took the log path or threw `Missing API key` (265 failures on the first run). `vitest.config.ts` pins `EMAIL_DELIVERY=resend` and a fake `RESEND_API_KEY`: the suite gives the same result in the prod and the dev checkout, and no test holds the real key. Anything new a test relies on goes there too, never into a `.env`.
 
 26. **pnpm 11 skips releases younger than a day** — its built-in `minimumReleaseAge` (1440 minutes) is non-strict: `pnpm add <pkg>`, and `npx expo install`, which calls it, quietly take the newest version published more than a day ago instead of `latest`. On 27 Oct 2026 `@rnmapbox/maps` came in as 10.3.11 while `latest` was 10.3.15, published that morning. That delay is a protection (a hijacked release is usually pulled within hours): read the version that landed in `package.json` rather than assuming `latest`, and ask Jerome before working around it for a fix released today.
+
+27. **The Expo tunnel kills Metro when it reconnects** — when the `@expo/ws-tunnel` connection drops, it reconnects with the same signed URL, the tunnel service answers `409`, and Expo CLI doesn't catch the error: `Error: Unexpected server response: 409`, `exit code 7`, Metro gone. The phone then gets a connection error and `/status` on the public address a 502 "No server is connected to handle the request". It happened twice in a row: on 29 Oct 2026 within three hours of the start, then again before the next morning. Expo CLI 58.1.17 has the same tunnel code (and the same `@expo/ws-tunnel` 2.0.1), so updating doesn't help; no public Expo issue found. Workaround: the restart loop of "A mobile session", with a new address after each restart. A fixed address needs another way in (Tailscale, proposed 30 Oct 2026, Jerome to decide).
 
 ---
 
