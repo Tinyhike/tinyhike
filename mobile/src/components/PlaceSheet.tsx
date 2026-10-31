@@ -1,24 +1,14 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import type { TapLookup } from '@/lib/basemap-place'
 import { colors } from '@/lib/colors'
 import { t } from '@/lib/i18n'
 
-/** The sheet follows the tap: looking it up, then the place or why there is none. */
-export type SheetState = { kind: 'loading' } | TapLookup
-
 type Props = {
-  state: SheetState
+  state: TapLookup
   onClose: () => void
 }
-
-const MESSAGE = {
-  loading: 'tap.loading',
-  none: 'tap.none',
-  offline: 'tap.offline',
-  error: 'tap.error',
-} as const
 
 /** The tapped place, in a sheet at the bottom of the map. */
 export function PlaceSheet({ state, onClose }: Props) {
@@ -35,8 +25,7 @@ export function PlaceSheet({ state, onClose }: Props) {
           </View>
         ) : (
           <View style={[styles.text, styles.status]} accessibilityLiveRegion="polite">
-            {state.kind === 'loading' ? <ActivityIndicator color={colors.inkSoft} /> : null}
-            <Text style={styles.message}>{t(MESSAGE[state.kind])}</Text>
+            <Text style={styles.message}>{t('tap.none')}</Text>
           </View>
         )}
         <Pressable
@@ -71,7 +60,7 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   text: { flex: 1 },
-  status: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 24 },
+  status: { minHeight: 24, justifyContent: 'center' },
   name: { fontSize: 20, fontWeight: '700', color: colors.ink },
   category: { marginTop: 4, fontSize: 15, color: colors.inkSoft },
   message: { flex: 1, fontSize: 15, color: colors.ink },

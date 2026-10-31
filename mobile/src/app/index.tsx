@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { PlaceSheet, type SheetState } from '@/components/PlaceSheet'
-import { lookUpPlace, type Viewpoint } from '@/lib/basemap-place'
+import { BasemapPlaces, type PlacePressEvent } from '@/components/BasemapPlaces'
+import { PlaceSheet } from '@/components/PlaceSheet'
+import { placeAtTap, type TapLookup } from '@/lib/basemap-place'
 import { colors } from '@/lib/colors'
 import { locale, t } from '@/lib/i18n'
 
@@ -15,18 +16,10 @@ const OPENING_ZOOM = 13
 
 const TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? ''
 
-type MapPress = {
-  geometry: { coordinates: number[] }
-}
-
 export default function MapScreen() {
   const camera = useRef<Camera>(null)
-  // Zoom and pitch decide which places Standard shows; updated when the map settles.
-  const view = useRef<Viewpoint>({ zoom: OPENING_ZOOM, pitch: 0 })
-  // Only the latest tap may fill the sheet: an older answer arriving late is dropped.
-  const lastTap = useRef(0)
   const insets = useSafeAreaInsets()
-  const [sheet, setSheet] = useState<SheetState | null>(null)
+  const [sheet, setSheet] = useState<TapLookup | null>(null)
   const [showPuck, setShowPuck] = useState(false)
   const [locationRefused, setLocationRefused] = useState(false)
 
@@ -37,17 +30,21 @@ export default function MapScreen() {
       .catch(() => setShowPuck(false))
   }, [])
 
-  async function onPress(press: MapPress) {
-    const [lng, lat] = press.geometry.coordinates
-    const tap = ++lastTap.current
-    setSheet({ kind: 'loading' })
-    const result = await lookUpPlace([lng, lat], view.current, locale, TOKEN)
-    if (tap === lastTap.current) setSheet(result)
+  // A tap on drawn icons: the nearest one is the place.
+  function onPlacePress(event: PlacePressEvent) {
+    const tap: [number, number] = [event.coordinates.longitude, event.coordinates.latitude]
+    const place = placeAtTap(event.features, tap, locale)
+    if (__DEV__) {
+      // Which icons the touch box held: Metro's log.
+      console.log('[tap]', event.features.map((f) => `${String(f.properties?.name)} (${String(f.properties?.maki ?? f.properties?.mode)})`).join(' | '))
+    }
+    setSheet(place ? { kind: 'place', place } : { kind: 'none' })
   }
 
-  function closeSheet() {
-    lastTap.current += 1
-    setSheet(null)
+  // A tap where no icon is drawn.
+  function onMapPress() {
+    if (__DEV__) console.log('[tap] no icon')
+    setSheet({ kind: 'none' })
   }
 
   // The position is asked for the first time the parent wants it, like the PWA's locate button.
@@ -84,12 +81,10 @@ export default function MapScreen() {
         style={styles.screen}
         styleURL="mapbox://styles/mapbox/standard"
         scaleBarEnabled={false}
-        onPress={(press) => void onPress(press as MapPress)}
-        onMapIdle={(state) => {
-          view.current = { zoom: state.properties.zoom, pitch: state.properties.pitch }
-        }}
+        onPress={onMapPress}
       >
         <Camera ref={camera} defaultSettings={{ centerCoordinate: ROTTERDAM, zoomLevel: OPENING_ZOOM }} />
+        <BasemapPlaces onPress={onPlacePress} />
         {showPuck ? <LocationPuck puckBearingEnabled pulsing={{ isEnabled: true }} /> : null}
       </MapView>
 
@@ -108,7 +103,7 @@ export default function MapScreen() {
         ) : null}
       </View>
 
-      {sheet ? <PlaceSheet state={sheet} onClose={closeSheet} /> : null}
+      {sheet ? <PlaceSheet state={sheet} onClose={() => setSheet(null)} /> : null}
     </View>
   )
 }
