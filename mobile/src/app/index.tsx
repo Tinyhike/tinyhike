@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BasemapPlaces, type PlacePressEvent } from '@/components/BasemapPlaces'
 import { PlaceSheet } from '@/components/PlaceSheet'
 import { placeAtTap, type TapLookup } from '@/lib/basemap-place'
-import { colors } from '@/lib/colors'
+import { colors } from '@/theme'
 import { locale, t } from '@/lib/i18n'
 
 // The PWA's opening view (web/src/pages/MapPage.tsx).
@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     justifyContent: 'center',
     borderRadius: 22,
-    backgroundColor: colors.paper,
+    backgroundColor: colors.surface,
     elevation: 4,
     shadowColor: '#000',
     shadowOpacity: 0.15,
@@ -125,8 +125,8 @@ const styles = StyleSheet.create({
   },
   buttonPressed: { backgroundColor: '#f2f5f6' },
   buttonText: { fontSize: 15, fontWeight: '600', color: colors.ink },
-  note: { maxWidth: 240, padding: 10, borderRadius: 12, backgroundColor: colors.paper, elevation: 4 },
+  note: { maxWidth: 240, padding: 10, borderRadius: 12, backgroundColor: colors.surface, elevation: 4 },
   noteText: { fontSize: 13, color: colors.inkSoft },
-  missing: { flex: 1, paddingHorizontal: 24, backgroundColor: colors.paper },
+  missing: { flex: 1, paddingHorizontal: 24, backgroundColor: colors.surface },
   missingText: { fontSize: 16, color: colors.ink },
 })

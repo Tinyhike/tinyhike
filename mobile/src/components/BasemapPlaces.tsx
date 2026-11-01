@@ -6,7 +6,7 @@ import {
   PARENT_CATEGORIES,
   TRANSIT_WITH_PARENT_CATEGORIES,
 } from '@/config/basemap-places'
-import { colors } from '@/lib/colors'
+import { colors } from '@/theme'
 import { PLACE_ICONS } from '@/lib/place-icons'
 
 // The basemap's places, drawn by the app instead of by Standard. Standard is a
@@ -65,7 +65,7 @@ const label = {
   textFont: ['DIN Pro Medium', 'Arial Unicode MS Regular'],
   textSize: 12,
   textColor: colors.ink,
-  textHaloColor: colors.paper,
+  textHaloColor: colors.surface,
   textHaloWidth: 1.2,
   textAnchor: 'top',
   textOffset: [0, 1.25],

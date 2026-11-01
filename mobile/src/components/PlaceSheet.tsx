@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import type { TapLookup } from '@/lib/basemap-place'
-import { colors } from '@/lib/colors'
+import { colors } from '@/theme'
 import { t } from '@/lib/i18n'
 
 type Props = {
@@ -50,7 +50,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingTop: 20,
     paddingHorizontal: 20,
-    backgroundColor: colors.paper,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     elevation: 12,
