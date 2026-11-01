@@ -6,7 +6,8 @@
   "scripts": {
     "start": "TS_IP=$(tailscale ip -4) && REACT_NATIVE_PACKAGER_HOSTNAME=$TS_IP APP_VARIANT=development expo start --dev-client --host lan",
     "start:tunnel": "APP_VARIANT=development expo start --dev-client --tunnel",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "dependencies": {
     "@rnmapbox/maps": "^10.3.11",

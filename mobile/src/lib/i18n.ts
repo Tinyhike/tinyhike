@@ -1,5 +1,9 @@
-// The app's few strings in the PWA's three languages (web/src/lib/i18n.tsx, same
-// tone: "tu" in French). No language switch yet: the device's language decides.
+// The app's strings (messages.ts) in the PWA's three languages. No language
+// switch yet: the device's language decides.
+
+import { en, fr, nl, type MessageKey } from './messages'
+
+export type { MessageKey }
 
 export const LOCALES = ['nl', 'fr', 'en'] as const
 export type Locale = (typeof LOCALES)[number]
@@ -25,32 +29,28 @@ function deviceLocale(): Locale {
 
 export const locale: Locale = deviceLocale()
 
-const MESSAGES = {
-  nl: {
-    'map.locate': 'Mijn locatie',
-    'map.locateRefused': 'Locatie geweigerd. Tik om de instellingen te openen.',
-    'sheet.close': 'Sluiten',
-    'sheet.untitled': 'Naamloze plek',
-    'tap.none': 'Geen plek hier. Tik op het icoon van een plek op de kaart.',
-  },
-  fr: {
-    'map.locate': 'Ma position',
-    'map.locateRefused': 'Position refusée. Touche pour ouvrir les réglages.',
-    'sheet.close': 'Fermer',
-    'sheet.untitled': 'Lieu sans nom',
-    'tap.none': 'Aucun lieu ici. Touche l’icône d’un lieu sur la carte.',
-  },
-  en: {
-    'map.locate': 'My location',
-    'map.locateRefused': 'Location refused. Tap to open the settings.',
-    'sheet.close': 'Close',
-    'sheet.untitled': 'Unnamed place',
-    'tap.none': 'No place here. Tap the icon of a place on the map.',
-  },
-} as const satisfies Record<Locale, Record<string, string>>
-
-export type MessageKey = keyof (typeof MESSAGES)['en']
+const MESSAGES: Record<Locale, Record<MessageKey, string>> = { nl, fr, en }
 
 export function t(key: MessageKey): string {
-  return MESSAGES[locale][key]
+  return MESSAGES[locale][key] ?? MESSAGES[DEFAULT_LOCALE][key]
+}
+
+/** Keys that come as a `.one` / `.other` pair, named without the suffix (as on the web). */
+export type PluralBase = {
+  [K in MessageKey]: K extends `${infer B}.one` ? (`${B}.other` extends MessageKey ? B : never) : never
+}[MessageKey]
+
+/**
+ * Whether `n` takes the singular. Intl.PluralRules when the engine has it; the
+ * rule of the three languages otherwise (French counts 0 as singular).
+ */
+function isOne(n: number): boolean {
+  if (typeof Intl.PluralRules === 'function') return new Intl.PluralRules(locale).select(n) === 'one'
+  return locale === 'fr' ? n < 2 : n === 1
+}
+
+/** A count in words: `tn('rev.count', 3)` is "3 avis". */
+export function tn(base: PluralBase, n: number): string {
+  const key = `${base}.${isOne(n) ? 'one' : 'other'}` as MessageKey
+  return t(key).replace('{n}', new Intl.NumberFormat(locale).format(n))
 }

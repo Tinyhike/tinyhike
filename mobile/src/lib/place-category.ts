@@ -55,6 +55,7 @@ const BY_MAKI: Record<string, Label> = {
   park: { nl: 'Park', fr: 'Parc', en: 'Park' },
   garden: { nl: 'Tuin', fr: 'Jardin', en: 'Garden' },
   playground: { nl: 'Speeltuin', fr: 'Aire de jeux', en: 'Playground' },
+  'picnic-site': { nl: 'Picknickplaats', fr: 'Aire de pique-nique', en: 'Picnic site' },
   'dog-park': { nl: 'Hondenuitlaatplaats', fr: 'Parc à chiens', en: 'Dog park' },
   swimming: { nl: 'Zwembad', fr: 'Piscine', en: 'Swimming pool' },
   'fitness-centre': { nl: 'Sportschool', fr: 'Salle de sport', en: 'Gym' },
