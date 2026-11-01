@@ -40,12 +40,14 @@ const tiltedEdge = (limits: [number, number, number, number]) => [
   ['step', ['pitch'], true, 40, ['<', ['distance-from-center'], limits[0]], 50, ['<', ['distance-from-center'], limits[1]], 55, ['<', ['distance-from-center'], limits[2]], 60, ['<=', ['distance-from-center'], limits[3]]],
 ]
 
-// A place with no name has nothing to show in the sheet: not drawn.
+// A stop with no name has nothing to show in the sheet: not drawn. Places with
+// no name are drawn, icon only, like Standard does: most playgrounds, picnic
+// sites and dog parks have none in the tiles (all 22 playgrounds of central
+// Rotterdam's zoom 16 tiles), and leaving them out left the map with no green.
 const named = ['!=', ['coalesce', ['get', 'name'], ''], '']
 
 const placeFilter = [
   'all',
-  named,
   ['match', ['get', 'maki_beta'], 'terminal', false, true],
   tiltedEdge([1.2, 1, 0.8, 0.6]),
   ['any', ['>=', ['zoom'], ALL_CATEGORIES_FROM_ZOOM], ['match', ['get', 'maki'], parentMaki, true, false]],

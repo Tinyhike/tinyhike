@@ -7,7 +7,8 @@ import { poiCategory, transitCategory } from './place-category'
 // overlaps, and the one nearest the finger wins.
 
 export type BasemapPlace = {
-  name: string
+  /** Null for the many places the tiles leave unnamed (most playgrounds). */
+  name: string | null
   category: string | null
 }
 
@@ -37,14 +38,14 @@ function distance2([lng1, lat1]: [number, number], [lng2, lat2]: [number, number
   return dx * dx + dy * dy
 }
 
-/** The named place whose icon is nearest the tap, with its category in `locale`. */
+/** The place whose icon is nearest the tap, with its category in `locale`. */
 export function placeAtTap(features: TappedFeature[], tap: [number, number], locale: Locale): BasemapPlace | null {
   let best: { place: BasemapPlace; d: number } | null = null
   for (const feature of features) {
     const props = feature.properties ?? {}
     const name = text(props.name)
     const at = pointOf(feature)
-    if (!name || !at) continue
+    if (!at) continue
     const d = distance2(tap, at)
     if (best && best.d <= d) continue
     // Transit stops carry a stop type; places carry a Maki icon and a class.

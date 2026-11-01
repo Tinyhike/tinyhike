@@ -30,18 +30,21 @@ const MESSAGES = {
     'map.locate': 'Mijn locatie',
     'map.locateRefused': 'Locatie geweigerd. Tik om de instellingen te openen.',
     'sheet.close': 'Sluiten',
+    'sheet.untitled': 'Naamloze plek',
     'tap.none': 'Geen plek hier. Tik op het icoon van een plek op de kaart.',
   },
   fr: {
     'map.locate': 'Ma position',
     'map.locateRefused': 'Position refusée. Touche pour ouvrir les réglages.',
     'sheet.close': 'Fermer',
+    'sheet.untitled': 'Lieu sans nom',
     'tap.none': 'Aucun lieu ici. Touche l’icône d’un lieu sur la carte.',
   },
   en: {
     'map.locate': 'My location',
     'map.locateRefused': 'Location refused. Tap to open the settings.',
     'sheet.close': 'Close',
+    'sheet.untitled': 'Unnamed place',
     'tap.none': 'No place here. Tap the icon of a place on the map.',
   },
 } as const satisfies Record<Locale, Record<string, string>>

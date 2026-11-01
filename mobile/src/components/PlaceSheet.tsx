@@ -18,10 +18,11 @@ export function PlaceSheet({ state, onClose }: Props) {
       <View style={styles.row}>
         {state.kind === 'place' ? (
           <View style={styles.text}>
+            {/* A nameless place (most playgrounds) is titled by its category. */}
             <Text style={styles.name} numberOfLines={2} accessibilityRole="header">
-              {state.place.name}
+              {state.place.name ?? state.place.category ?? t('sheet.untitled')}
             </Text>
-            {state.place.category ? <Text style={styles.category}>{state.place.category}</Text> : null}
+            {state.place.name && state.place.category ? <Text style={styles.category}>{state.place.category}</Text> : null}
           </View>
         ) : (
           <View style={[styles.text, styles.status]} accessibilityLiveRegion="polite">
